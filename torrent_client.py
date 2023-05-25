@@ -8,6 +8,7 @@ import multiprocessing.pool
 import os
 import torrent_utils
 import shutil
+from threading import Thread
 # --- Network Configuration ---
 
 
@@ -25,7 +26,7 @@ class peer_to_peer(socket.socket):
     peer_to_peer server class
     '''
     @staticmethod
-    def server() -> peer_to_peer:
+    def server() -> str:
         server = peer_to_peer()
         server.handle_connections()
         return server
@@ -42,7 +43,7 @@ class peer_to_peer(socket.socket):
 
         '''
 
-        super.__init__(socket.AF_INET, socket.SOCK_STREAM)
+        super().__init__(socket.AF_INET, socket.SOCK_STREAM)
         # Bind the server socket
         self.bind((HOST, TCP_PORT))
         self.listen(5)
@@ -65,7 +66,7 @@ class peer_to_peer(socket.socket):
 
             # Get the list sockets which are ready to be read or write through select
             read_sockets, write_sockets, error_sockets = select.select(
-                self.CONNECTION_LIST, self.CONNECTION_LIST - self, self.CONNECTION_LIST)
+                self.CONNECTION_LIST, set(self.CONNECTION_LIST).difference(self), self.CONNECTION_LIST)
 
             for sock in read_sockets:
                 if sock == self:
@@ -159,7 +160,7 @@ class torrent_client(socket.socket):
     Torrent client class 
     '''
     @staticmethod
-    def server() -> torrent_client:
+    def server() -> str:
         server = torrent_client()
         receive_thread = Thread(target=torrent_client.receive, args=(server,))
         receive_thread.daemon = True
@@ -178,7 +179,7 @@ class torrent_client(socket.socket):
 
         '''
 
-        super.__init__(socket.AF_INET, socket.SOCK_STREAM)
+        super().__init__(socket.AF_INET, socket.SOCK_STREAM)
 
         # connect to the server socket
         self.connect((TORRENT_SERVER, TORRENT_PORT))

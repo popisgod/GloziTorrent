@@ -18,7 +18,7 @@ class torrent_server(socket.socket):
     Torrent server class
     '''
     @staticmethod
-    def server() -> torrent_server:
+    def server() -> str:
         server = torrent_server()
         server.handle_connections()
         return server 
@@ -34,7 +34,7 @@ class torrent_server(socket.socket):
             None.
         
         '''
-        super.__init__(socket.AF_INET, socket.SOCK_STREAM)
+        super().__init__(socket.AF_INET, socket.SOCK_STREAM)
         # Bind the server socket
         self.bind((HOST, TCP_PORT))
         self.listen(5)
@@ -60,7 +60,7 @@ class torrent_server(socket.socket):
                 
                 # Get the list sockets which are ready to be read or write through select
                 read_sockets, write_sockets, error_sockets = select.select(
-                    self.CONNECTION_LIST, self.CONNECTION_LIST - self, self.CONNECTION_LIST)
+                    self.CONNECTION_LIST, set(self.CONNECTION_LIST).difference(self), self.CONNECTION_LIST)
 
                 for sock in read_sockets: 
                         if sock == self:
