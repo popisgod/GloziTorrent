@@ -7,9 +7,9 @@ import os
 import shutil
 import json
 from threading import Thread
-import networking_utils
-import torrent_utils
-import setup
+import utils.networking_utils as networking_utils
+import utils.torrent_utils as torrent_utils
+import utils.setup as setup
 
 # --- Network Configuration ---
 

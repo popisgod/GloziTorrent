@@ -1,5 +1,5 @@
 import json 
-import torrent_utils
+import utils.torrent_utils as torrent_utils
 
 def setup():
     '''

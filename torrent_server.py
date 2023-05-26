@@ -2,7 +2,7 @@
 import socket
 import select
 import pickle
-import networking_utils
+import utils.networking_utils as networking_utils
 
 
 # --- Network Configuration ---
