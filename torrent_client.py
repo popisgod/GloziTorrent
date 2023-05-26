@@ -1,13 +1,14 @@
 # Import necessary modules and functions
 import socket
-from networking_utils import *
-import select 
 import pickle
 import multiprocessing.pool
+import select
 import os
-import torrent_utils
 import shutil
 from threading import Thread
+import networking_utils
+import torrent_utils
+
 # --- Network Configuration ---
 
 
@@ -15,8 +16,8 @@ from threading import Thread
 HOST = ''
 TORRENT_SERVER = '172.16.5.4'
 TORRENT_PORT = 50142
-HOST_IP = get_host_ip()
-TCP_PORT = get_open_port()
+HOST_IP = networking_utils.get_host_ip()
+TCP_PORT = networking_utils.get_open_port()
 BUFSIZ = 4096
 
 
@@ -68,12 +69,12 @@ class PeerToPeer(socket.socket):
         while True:
 
             # Get the list sockets which are ready to be read or write through select
-            read_sockets, write_sockets, error_sockets = select.select(
+            read_sockets, write_sockets, _ = select.select(
                 self.CONNECTION_LIST, set(self.CONNECTION_LIST).difference([self,]), self.CONNECTION_LIST)
 
             for sock in read_sockets:
                 if sock == self:
-                    new_socket, address = sock.accept()
+                    new_socket, _ = sock.accept()
                     self.CONNECTION_LIST.append(new_socket)
                     self.file_transfers[new_socket] = {
                         'file_name': None,

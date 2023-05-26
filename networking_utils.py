@@ -2,34 +2,25 @@ import sys
 import socket
 import subprocess
 import re
-import requests
-from bs4 import BeautifulSoup
 import random
 from datetime import datetime
-import struct
-from struct import * 
-import fcntl 
-
-def get_mac_address(client_socket):
-    client_address = client_socket.getpeername()[0]
-    ifname = struct.pack('256s', client_address.encode('utf-8'))
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    mac_address = struct.unpack('17s', fcntl.ioctl(
-        sock.fileno(),
-        0x8927,  # SIOCGIFHWADDR
-        ifname[:15]
-    ))[0].decode('utf-8')
-    return mac_address
+import requests
+from bs4 import BeautifulSoup
 
 
-def generate_random_happy_emoji():
-    happy_emojis = [
-        ":)", ":D", ";)", ":P", ":p", ":3", "^_^", "=)", "=]", "8)", ":-)", ":]", ":-D", ":}", ";-)", ";D", "X)", "xD", ";-D", "xD", "=D", "8D", "XD", ":')D", "^w^", "^_^;", "^-^", "^o^", "<(^_^<)", "(>^_^)>", "(*^_^*)", "(^._.^)ﾉ", "(^o^)/", "(^O^)／", "(^_^)v", "(^_-)-☆", "(^_^)/", "(^J^)", "(^_-)", "(＾ｖ＾)", "(・∀・)", "(｀・ω・´)", "(￣▽￣)", "(´∀`)", "(＾◡＾)"]
+def get_ip_adress(client_socket: socket.socket):
+    '''
+    placeholder
+    '''
+    hostname = client_socket.gethostname()
+    ip_adress = client_socket.gethostbyname(hostname)
+    return ip_adress
 
-    return random.choice(happy_emojis)
 
-# TODO: this is so dumb
 def generate_random_color(min_brightness=128):
+    '''
+    placeholder 
+    '''
     # Generate random values for red, green, and blue
     r = random.randint(0, 255)
     g = random.randint(0, 255)
@@ -62,31 +53,30 @@ def generate_random_color(min_brightness=128):
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
-def get_server_time(code : int = 0) -> str:
+def get_server_time(code: int = 0) -> str:
     '''
-
-
+    placeholder 
     '''
     if code:
         now = datetime.now()
         server_time = now.strftime("%H:%M:%S")
     else:
         now = datetime.now()
-        server_time = now.strftime("%d/%m/%Y %H:%M:%S") 
-    
+        server_time = now.strftime("%d/%m/%Y %H:%M:%S")
+
     return server_time
 
 
 def get_random_quotes(number_of_quotes: int) -> list[(str, str)]:
     '''
-
+    placeholder 
     '''
 
     # URL of the random quotes page
     quote_url = 'http://www.quotationspage.com/random.php'
 
     # GET quote page and check status code
-    res = requests.get(quote_url)
+    res = requests.get(quote_url, timeout=20)
     if res.status_code == 200:
         # Create soup
         page = BeautifulSoup(res.text, 'html.parser')
@@ -97,8 +87,8 @@ def get_random_quotes(number_of_quotes: int) -> list[(str, str)]:
         quote_author_pairs = []
 
         # Pair the quotes and authors
-        for i in range(len(quotes)):
-            quote = '"' + quotes[i].text.strip() + '"'
+        for i, quote in enumerate(quotes):
+            quote = '"' + quote.text.strip() + '"'
             author = authors[i].find('b').text.strip()
             quote_author_pairs.append((quote, author))
     return quote_author_pairs[:number_of_quotes]
@@ -112,9 +102,9 @@ def get_host_ip() -> int:
     int: host ip 
     '''
     hostname = socket.gethostname()
-    IPAddr = socket.gethostbyname(hostname)
+    ip_adress = socket.gethostbyname(hostname)
 
-    return IPAddr
+    return ip_adress
 
 
 def get_open_port() -> int:

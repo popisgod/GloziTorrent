@@ -1,27 +1,28 @@
 # Import necessary modules and functions
 import socket
 import select
-import csv
 import pickle
-from networking_utils import *
-
+import networking_utils
 
 # --- Network Configuration ---
 
 # Define host IP address, TCP port, and buffer size
 HOST = ''
-HOST_IP = get_host_ip()
+HOST_IP = networking_utils.get_host_ip()
 TCP_PORT = 50142        # get_open_port()
 BUFSIZ = 4096
 
 
-class torrent_server(socket.socket):
+class TorrentServer(socket.socket):
     '''
     Torrent server class
     '''
     @staticmethod
     def server() -> str:
-        server = torrent_server()
+        '''
+        placeholder
+        '''
+        server = TorrentServer()
         server.handle_connections()
         return server
 
@@ -60,15 +61,15 @@ class torrent_server(socket.socket):
         while True:
 
             # Get the list sockets which are ready to be read or write through select
-            read_sockets, write_sockets, error_sockets = select.select(
-                self.CONNECTION_LIST, set(self.CONNECTION_LIST).difference([self,]), self.CONNECTION_LIST)
+            read_sockets, write_sockets, _ = select.select(
+                self.CONNECTION_LIST, set(self.CONNECTION_LIST).difference([self,]), 
+                self.CONNECTION_LIST)
 
             for sock in read_sockets:
                 if sock == self:
                     new_socket, address = sock.accept()
                     self.CONNECTION_LIST.append(new_socket)
-                    self.ID_BY_SOCKET[new_socket] = get_mac_address(new_socket)
-                    
+                    self.ID_BY_SOCKET[new_socket] = new_socket.gethostname()
                     self.ID_BY_IP[address[0]] = self.ID_BY_SOCKET[new_socket]
                 else:
                     try:
@@ -76,11 +77,11 @@ class torrent_server(socket.socket):
                         self.handle_client_commands(sock, res)
 
                     # In case of connection error, disconnect the client
-                    except (ConnectionResetError, Exception) as E:
+                    except (ConnectionResetError, Exception) as e:
                         self.disconnect(sock)
 
             for sock in write_sockets:
-                if sock not in self.PEER_PORT.keys():
+                if sock not in self.PEER_PORT:
                     sock.send('/port'.encode())
 
     def handle_client_commands(self, client: socket.socket, command:  str) -> None:
@@ -114,7 +115,7 @@ class torrent_server(socket.socket):
             self.PEER_PORT[client] = peer_port
             client_ip = client.gethostbyname(client.gethostname())
             self.PEER_INFO[self.ID_BY_SOCKET[client]] = (
-              client_ip, peer_port)
+                client_ip, peer_port)
 
         if msg_return:
             client.send(msg_return)
@@ -135,4 +136,4 @@ class torrent_server(socket.socket):
 
 
 if __name__ == '__main__':
-    server = torrent_server.server()
+    torrent_server = TorrentServer.server()
