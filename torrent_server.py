@@ -68,6 +68,7 @@ class TorrentServer(socket.socket):
             for sock in read_sockets:
                 if sock == self:
                     new_socket, address = sock.accept()
+                    print(f'{new_socket} has joined from {address}')
                     self.CONNECTION_LIST.append(new_socket)
                     self.ID_BY_SOCKET[new_socket] = networking_utils.get_hostname(new_socket)
                     self.ID_BY_IP[address[0]] = self.ID_BY_SOCKET[new_socket]
@@ -81,8 +82,12 @@ class TorrentServer(socket.socket):
                         self.disconnect(sock)
 
             for sock in write_sockets:
-                if sock not in self.PEER_PORT:
-                    sock.send('/port'.encode())
+                try:     
+                    if sock not in self.PEER_PORT:
+                        sock.send('/port'.encode())
+                except (ConnectionResetError, Exception) as e:
+                    self.disconnect(sock)
+                
 
     def handle_client_commands(self, client: socket.socket, command:  str) -> None:
         '''
