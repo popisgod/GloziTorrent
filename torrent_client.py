@@ -93,10 +93,10 @@ class PeerToPeer(socket.socket):
                         res = sock.recv(BUFSIZ).decode()
 
                         # If file information is not yet received, interpret the received data as file info
-                        if self.file_transfers[sock]['file_info']:
+                        if self.file_transfers[sock]['file_name']:
                             file = self.file_transfers[sock]['file']
                             remaining_size = self.file_transfers[sock]['remaining_size']
-                            file.write(res)
+                            file.write(res.encode())
                             self.file_transfers[sock]['remaining_size'] = remaining_size - len(
                                 res)
 
@@ -113,6 +113,7 @@ class PeerToPeer(socket.socket):
 
                     # In case of connection error, disconnect the client
                     except (ConnectionResetError, Exception) as e:
+                        raise e
                         self.disconnect(sock)
 
     def handle_client_commands(self, client: socket.socket, command:  str) -> None:
@@ -134,12 +135,13 @@ class PeerToPeer(socket.socket):
             file_size = int(file_size)
 
             # Open the file for writing
-            file_path = '/' + file_name
+            file_path = os.path.join(r'Z:\Cyber\yudalef\Final Project\Torrent\torrent_files',file_name)
             self.file_transfers[client]['file_name'] = file_name
+            print(file_path)
             self.file_transfers[client]['file'] = open(file_path, 'wb')
             self.file_transfers[client]['remaining_size'] = file_size
             client.send('!OK'.encode())
-
+            print('file start')
         elif parts[0] == '/download':
             pass
         elif parts[0] == '/disconnect':
@@ -149,7 +151,8 @@ class PeerToPeer(socket.socket):
         elif parts[0] == '/download_complete':
             pass
 
-        client.send(msg_return)
+        if msg_return:
+            client.send(msg_return)
 
     def disconnect(self, sock: socket.socket) -> None:
         '''
@@ -289,14 +292,13 @@ class TorrentClient(socket.socket):
                 socket_peers.append(s)
             except ConnectionRefusedError:
                 continue
-        print(len(socket_peers))
-        print(len(file_parts_paths))
+
+
         # create processesing pool and start sending the files
         with multiprocessing.pool.ThreadPool(processes=len(peers)) as pool:
             for file_status in pool.starmap(send_file, zip(file_parts_paths, socket_peers)):
                 if file_status[0]:
-                    peer_ip = file_status[2].gethostbyname(
-                        file_status[2].gethostname())
+                    peer_ip = networking_utils.get_ip_adress(file_status[2])
                     update_command = ' '.join(
                         ('!update', file_status[1], (peers_info[1][peer_ip])))
                     self.update_torrent_server(update_command)
@@ -307,7 +309,6 @@ class TorrentClient(socket.socket):
         for peer in socket_peers:
             peer.close()
 
-        print(file_parts_paths[0])
         # delete the temp dir storing the tar files
         shutil.rmtree(os.path.dirname(file_parts_paths[0][0]))
 
@@ -324,7 +325,7 @@ def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, soc
     try:
         # get the file name and size to send the server
         file_path = file_parts_paths[0]
-        file_name = file_path.split('/')[-1].split('.')[0]
+        file_name = file_path.split('\\')[-1].split('.')[0]
         file_size = os.path.getsize(file_path)
         peer.send(f"/upload_part {file_name} {file_size}".encode())
 
@@ -341,7 +342,6 @@ def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, soc
                 chunk = file.read(BUFSIZ)
                 if not chunk:
                     break
-                print('hello')
                 peer.send(chunk)
     except (ConnectionResetError) as e:
         return [False, file_parts_paths[1], peer]

@@ -122,7 +122,7 @@ class TorrentServer(socket.socket):
             self.PEER_INFO[self.ID_BY_SOCKET[client]] = (
                 client_ip, peer_port)
         elif parts[0] == '!update':
-            pass
+            print(command)
 
         if msg_return:
             client.send(msg_return)
