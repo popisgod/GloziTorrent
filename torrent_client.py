@@ -1,7 +1,7 @@
 # Import necessary modules and functions
 import socket
 from networking_utils import *
-from select import select
+import select 
 import pickle
 import multiprocessing.pool
 import os
@@ -13,7 +13,7 @@ from threading import Thread
 
 # Define host IP address, TCP port, and buffer size
 HOST = ''
-TORRENT_SERVER = '10.100.102.3'
+TORRENT_SERVER = '172.16.5.4'
 TORRENT_PORT = 50142
 HOST_IP = get_host_ip()
 TCP_PORT = get_open_port()
@@ -30,7 +30,7 @@ class PeerToPeer(socket.socket):
         placeholder
 
         '''
-        server = peer_to_peer()
+        server = PeerToPeer()
         server.handle_connections()
         return server
 
@@ -69,7 +69,7 @@ class PeerToPeer(socket.socket):
 
             # Get the list sockets which are ready to be read or write through select
             read_sockets, write_sockets, error_sockets = select.select(
-                self.CONNECTION_LIST, set(self.CONNECTION_LIST).difference(self), self.CONNECTION_LIST)
+                self.CONNECTION_LIST, set(self.CONNECTION_LIST).difference([self,]), self.CONNECTION_LIST)
 
             for sock in read_sockets:
                 if sock == self:
@@ -167,9 +167,9 @@ class TorrentClient(socket.socket):
         '''
         placeholder
         '''
-        server = torrent_client()
+        server = TorrentClient()
         receive_thread = Thread(
-            target=torrent_client.recieve_wrapper, args=(server,))
+            target= server.receive_wrapper)
         receive_thread.daemon = True
         receive_thread.start()
         return server
@@ -249,8 +249,8 @@ class TorrentClient(socket.socket):
         elif parts[0] == '/download_complete':
             pass
 
-    def upload_file_to_network(self, peers_info: tuple(list[(str, int)],
-                                                       dict(int, str)), file_path: str) -> None:
+    def upload_file_to_network(self, peers_info: tuple((list[(str, int)],
+                                                       dict)), file_path: str) -> None:
         '''
         divides the file and uploads it to the peers that are in the provided list. 
         updates the torrent server about the upload.

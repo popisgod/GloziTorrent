@@ -8,6 +8,7 @@ import random
 from datetime import datetime
 import struct
 from struct import * 
+import fcntl 
 
 def get_mac_address(client_socket):
     client_address = client_socket.getpeername()[0]
