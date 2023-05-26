@@ -23,10 +23,9 @@ def divide_into_parts(file_path: str, N: int) -> list[(int,bin)]:
     '''
     with open(file_path, 'rb') as file:
         file_data = file.read()
-
+    
     # calculate chuck size
     chunk_size = len(file_data) // N
-
     # divide data into chunks
     chunks = []
     for i in range(N):
@@ -82,8 +81,10 @@ def package_computer_parts(file_name: str, file_path: str, N: int, M: int) -> li
         list[str, dict]: pairs of path and metadata of the tar files created 
 
     '''
+    
 
     # seperate the file into different parts and create a temp directory for later storage
+    print(file_path)
     computer_parts = divide_to_computers(file_path, N, M)
     temp_dir = tempfile.mkdtemp()
 

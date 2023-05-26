@@ -14,7 +14,7 @@ import torrent_utils
 
 # Define host IP address, TCP port, and buffer size
 HOST = ''
-TORRENT_SERVER = '172.16.5.4'
+TORRENT_SERVER = '10.100.102.3'
 TORRENT_PORT = 50142
 HOST_IP = networking_utils.get_host_ip()
 TCP_PORT = networking_utils.get_open_port()
@@ -32,7 +32,10 @@ class PeerToPeer(socket.socket):
 
         '''
         server = PeerToPeer()
-        server.handle_connections()
+        handle_connections_thread = Thread(
+            target=server.handle_connections)
+        handle_connections_thread.daemon = True
+        handle_connections_thread.start()
         return server
 
     def __init__(self) -> None:
@@ -78,6 +81,7 @@ class PeerToPeer(socket.socket):
                 if sock == self:
                     new_socket, _ = sock.accept()
                     self.CONNECTION_LIST.append(new_socket)
+                    print('new socket')
                     self.file_transfers[new_socket] = {
                         'file_name': None,
                         'file': None,
@@ -211,6 +215,7 @@ class TorrentClient(socket.socket):
 
                 if res_loaded[0] in self.actions:
                     self.actions.remove(res_loaded[0])
+                    print(res_loaded[0])
                     self.execute_command(res_loaded[0], res_loaded[1])
 
             # In case of connection error, disconnect the client
@@ -222,7 +227,6 @@ class TorrentClient(socket.socket):
         placeholder
 
         '''
-        command = command + str(len(self.actions))  # add place in queue
         self.actions.append(command)
         self.send(command.encode())
 
@@ -237,7 +241,7 @@ class TorrentClient(socket.socket):
         Process a command received from the client.
 
         '''
-        parts = command.split()
+        parts = command.split(' ')
         msg_return = ''
 
         if parts[0] == '/upload':
@@ -272,7 +276,8 @@ class TorrentClient(socket.socket):
         peers = peers_info[0]
         file_parts_paths = torrent_utils.package_computer_parts(
             file_name, file_path, len(peers), len(peers)//2)
-
+        print('hello')
+        
         # create socket connection with peers
         socket_peers = []
         for peer in peers:
@@ -336,4 +341,4 @@ if __name__ == '__main__':
     peer_to_peer = PeerToPeer.server()
 
     while True:
-        torrent_client.send_command(input())
+        torrent_client.send_command(input().strip())

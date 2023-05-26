@@ -68,7 +68,7 @@ class TorrentServer(socket.socket):
             for sock in read_sockets:
                 if sock == self:
                     new_socket, address = sock.accept()
-                    print(f'{new_socket} has joined from {address}')
+                    print(f'socket has joined from {address}')
                     self.CONNECTION_LIST.append(new_socket)
                     self.ID_BY_SOCKET[new_socket] = networking_utils.get_hostname(new_socket)
                     self.ID_BY_IP[address[0]] = self.ID_BY_SOCKET[new_socket]
@@ -135,8 +135,9 @@ class TorrentServer(socket.socket):
         Returns:
             None.
         '''
-
-        self.CONNECTION_LIST.remove(sock)
+        if sock in self.CONNECTION_LIST: 
+            self.CONNECTION_LIST.remove(sock)
+            print(f'{sock.getpeername()} has left')
         sock.close()
 
 
