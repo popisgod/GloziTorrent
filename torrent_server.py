@@ -4,6 +4,7 @@ import select
 import pickle
 import networking_utils
 
+
 # --- Network Configuration ---
 
 # Define host IP address, TCP port, and buffer size
@@ -70,9 +71,7 @@ class TorrentServer(socket.socket):
                     new_socket, address = sock.accept()
                     print(f'socket has joined from {address}')
                     self.CONNECTION_LIST.append(new_socket)
-                    self.ID_BY_SOCKET[new_socket] = networking_utils.get_hostname(new_socket)
-                    self.ID_BY_IP[address[0]] = self.ID_BY_SOCKET[new_socket]
-                    new_socket.send(pickle.dumps(['/port',]))
+                    new_socket.send(pickle.dumps(['/peerinfo',]))
                 else:
                     try:
                         sock_data = sock.recv(BUFSIZ).decode()
@@ -115,12 +114,19 @@ class TorrentServer(socket.socket):
             pass
         elif parts[0] == '/download_complete':
             pass
-        elif parts[0] == '!port':
+        elif parts[0] == '!peerinfo':
             peer_port = int(parts[1])
-            self.PEER_PORT[client] = peer_port
+            PEER_UUID = parts[2]
             client_ip = networking_utils.get_ip_adress(client)
-            self.PEER_INFO[self.ID_BY_SOCKET[client]] = (
+
+            self.ID_BY_SOCKET[client] = PEER_UUID
+            self.ID_BY_IP[client_ip] = PEER_UUID
+
+          
+            self.PEER_PORT[client] = peer_port
+            self.PEER_INFO[PEER_UUID] = (
                 client_ip, peer_port)
+            
         elif parts[0] == '!update':
             print(command)
 

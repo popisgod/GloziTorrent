@@ -5,9 +5,11 @@ import multiprocessing.pool
 import select
 import os
 import shutil
+import json
 from threading import Thread
 import networking_utils
 import torrent_utils
+import setup
 
 # --- Network Configuration ---
 
@@ -88,7 +90,7 @@ class PeerToPeer(socket.socket):
                         res = sock.recv(BUFSIZ).decode()
 
                         # If file information is not yet received, interpret the received data as file info
-                        if self.file_transfers[sock]['file_name']:
+                        if sock in self.file_transfers:
                             file = self.file_transfers[sock]['file']
                             remaining_size = self.file_transfers[sock]['remaining_size']
                             file.write(res.encode())
@@ -101,7 +103,7 @@ class PeerToPeer(socket.socket):
                                 print(f"File {self.file_transfers[sock]['file_name']} received")
                                 
                                 # extract tar file and delete it 
-                                file_dir = os.path.join(r'Z:\Cyber\yudalef\Final Project\Torrent\torrent_files', self.file_transfers[sock]['file_name'] + '.torrent')
+                                file_dir = os.path.join(os.getcwd(), self.file_transfers[sock]['file_name'] + '.torrent')
                                 os.makedirs(file_dir)
                                 torrent_utils.extract_tar_file(self.file_transfers[sock]['file_path'], file_dir)
                                 os.remove(self.file_transfers[sock]['file_path'])
@@ -146,7 +148,7 @@ class PeerToPeer(socket.socket):
             }  
 
             # Open the file for writing
-            file_path = os.path.join(r'Z:\Cyber\yudalef\Final Project\Torrent\torrent_files',file_name)
+            file_path = os.path.join(os.getcwd(),file_name)
             self.file_transfers[client]['file_path'] = file_path
             self.file_transfers[client]['file_name'] = file_name
             self.file_transfers[client]['file'] = open(file_path, 'wb')
@@ -230,8 +232,12 @@ class TorrentClient(socket.socket):
                     del self.actions[res_loaded[0]]
                     self.execute_command(command, res_loaded[1])                
                 
-                if type(res_loaded[0]) == str and res_loaded[0] == '/port':
-                    msg_return = ' '.join(('!port', str(TCP_PORT)))
+                if type(res_loaded[0]) == str and res_loaded[0] == '/peerinfo':
+                    # get the UUID    
+                    with open('settings.json','r') as f: 
+                        settings = json.load(f)
+                    
+                    msg_return = ' '.join(('!peerinfo', str(TCP_PORT), settings['UUID']))
                     self.send(msg_return.encode())
 
 
@@ -361,6 +367,9 @@ def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, soc
 
 
 if __name__ == '__main__':
+    if not os.path.exists(os.path.join(os.getcwd(),'settings.json')):
+        setup.setup()
+    
     torrent_client = TorrentClient.server()
     peer_to_peer = PeerToPeer.server()
 
