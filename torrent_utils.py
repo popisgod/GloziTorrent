@@ -110,7 +110,7 @@ def package_computer_parts(file_name: str, file_path: str, N: int, M: int) -> li
         files.append(('metadata.json', json.dumps(metadata).encode()))
 
         # create the name of the tar file
-        tar_name = ''.join((file_name, str(i)))
+        tar_name = ''.join((file_name,'-', str(i)))
 
         path_and_metadata = (os.path.join(temp_dir, tar_name), json.dumps(metadata))
         paths_and_metadatas.append(path_and_metadata)

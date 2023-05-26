@@ -81,12 +81,7 @@ class PeerToPeer(socket.socket):
                 if sock == self:
                     new_socket, _ = sock.accept()
                     self.CONNECTION_LIST.append(new_socket)
-                    print('new socket')
-                    self.file_transfers[new_socket] = {
-                        'file_name': None,
-                        'file': None,
-                        'remaining_size': 0
-                    }
+
                 else:
 
                     try:
@@ -103,11 +98,20 @@ class PeerToPeer(socket.socket):
                             # If the entire file is received, close the file and remove the client from the dictionary
                             if self.file_transfers[sock]['remaining_size'] == 0:
                                 file.close()
-                                print("File {} received".format(
-                                    self.file_transfers[sock]['file_name']))
+                                print(f"File {self.file_transfers[sock]['file_name']} received")
+                                
+                                # extract tar file and delete it 
+                                file_dir = os.path.join(r'Z:\Cyber\yudalef\Final Project\Torrent\torrent_files', self.file_transfers[sock]['file_name'] + '.torrent')
+                                os.makedirs(file_dir)
+                                torrent_utils.extract_tar_file(self.file_transfers[sock]['file_path'], file_dir)
+                                os.remove(self.file_transfers[sock]['file_path'])
+                                
+                                # close connection
                                 del self.file_transfers[sock]
                                 self.CONNECTION_LIST.remove(sock)
                                 sock.close()
+                                
+                                
                         else:
                             self.handle_client_commands(sock, res)
 
@@ -134,14 +138,22 @@ class PeerToPeer(socket.socket):
             file_name, file_size = parts[1], parts[2]
             file_size = int(file_size)
 
+            self.file_transfers[client] = {
+                'file_name': None,
+                'file': None,
+                'remaining_size': 0,
+                'file_path' : None
+            }  
+
             # Open the file for writing
             file_path = os.path.join(r'Z:\Cyber\yudalef\Final Project\Torrent\torrent_files',file_name)
+            self.file_transfers[client]['file_path'] = file_path
             self.file_transfers[client]['file_name'] = file_name
-            print(file_path)
             self.file_transfers[client]['file'] = open(file_path, 'wb')
             self.file_transfers[client]['remaining_size'] = file_size
+            
             client.send('!OK'.encode())
-            print('file start')
+
         elif parts[0] == '/download':
             pass
         elif parts[0] == '/disconnect':
@@ -325,7 +337,7 @@ def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, soc
     try:
         # get the file name and size to send the server
         file_path = file_parts_paths[0]
-        file_name = file_path.split('\\')[-1].split('.')[0]
+        file_name = file_path.split('\\')[-1].split('.')[0].split('-')[0]
         file_size = os.path.getsize(file_path)
         peer.send(f"/upload_part {file_name} {file_size}".encode())
 
