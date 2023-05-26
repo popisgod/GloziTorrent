@@ -69,7 +69,7 @@ class TorrentServer(socket.socket):
                 if sock == self:
                     new_socket, address = sock.accept()
                     self.CONNECTION_LIST.append(new_socket)
-                    self.ID_BY_SOCKET[new_socket] = new_socket.gethostname()
+                    self.ID_BY_SOCKET[new_socket] = networking_utils.get_hostname(new_socket)
                     self.ID_BY_IP[address[0]] = self.ID_BY_SOCKET[new_socket]
                 else:
                     try:
@@ -113,7 +113,7 @@ class TorrentServer(socket.socket):
         elif parts[0] == '!port':
             peer_port = int(parts[1])
             self.PEER_PORT[client] = peer_port
-            client_ip = client.gethostbyname(client.gethostname())
+            client_ip = networking_utils.get_ip_adress(client)
             self.PEER_INFO[self.ID_BY_SOCKET[client]] = (
                 client_ip, peer_port)
 

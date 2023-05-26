@@ -8,12 +8,23 @@ import requests
 from bs4 import BeautifulSoup
 
 
-def get_ip_adress(client_socket: socket.socket):
+def get_hostname(sock: socket.socket) -> str:
     '''
     placeholder
     '''
-    hostname = client_socket.gethostname()
-    ip_adress = client_socket.gethostbyname(hostname)
+    # Get the IP address and port number of the remote endpoint
+    ip_adress, _ = sock.getpeername()
+    # Perform a reverse DNS lookup to get the hostname
+    hostname = socket.gethostbyaddr(ip_adress)[0]
+
+    return hostname
+
+
+def get_ip_adress(client_socket: socket.socket) -> str:
+    '''
+    placeholder
+    '''
+    ip_adress = client_socket.getpeername()[0]
     return ip_adress
 
 

@@ -70,7 +70,9 @@ class PeerToPeer(socket.socket):
 
             # Get the list sockets which are ready to be read or write through select
             read_sockets, write_sockets, _ = select.select(
-                self.CONNECTION_LIST, set(self.CONNECTION_LIST).difference([self,]), self.CONNECTION_LIST)
+                self.CONNECTION_LIST, set(
+                    self.CONNECTION_LIST).difference([self,]),
+                self.CONNECTION_LIST)
 
             for sock in read_sockets:
                 if sock == self:
@@ -170,7 +172,7 @@ class TorrentClient(socket.socket):
         '''
         server = TorrentClient()
         receive_thread = Thread(
-            target= server.receive_wrapper)
+            target=server.receive_wrapper)
         receive_thread.daemon = True
         receive_thread.start()
         return server
@@ -300,7 +302,7 @@ class TorrentClient(socket.socket):
         shutil.rmtree(os.path.dirname(file_parts_paths[0]))
 
 
-def send_file(file_parts_paths : str, peer: socket.socket) -> list[bool, str, socket.socket]:
+def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, socket.socket]:
     '''
 
 
@@ -325,11 +327,8 @@ def send_file(file_parts_paths : str, peer: socket.socket) -> list[bool, str, so
                     break
                 peer.send(chunk)
     except (ConnectionResetError, Exception) as e:
-
         return [False, file_parts_paths[1], peer]
-                
     return [True, file_parts_paths[1], peer]
-
 
 
 if __name__ == '__main__':
