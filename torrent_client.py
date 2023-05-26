@@ -138,6 +138,7 @@ class PeerToPeer(socket.socket):
             self.file_transfers[client]['file_name'] = file_name
             self.file_transfers[client]['file'] = open(file_path, 'wb')
             self.file_transfers[client]['remaining_size'] = file_size
+            client.send('!OK'.encode())
 
         elif parts[0] == '/download':
             pass
@@ -197,7 +198,7 @@ class TorrentClient(socket.socket):
 
         # connect to the server socket
         self.connect((TORRENT_SERVER, TORRENT_PORT))
-        self.actions = []
+        self.actions = {}
 
     def receive_wrapper(self) -> None:
         '''
@@ -208,27 +209,29 @@ class TorrentClient(socket.socket):
             try:
                 res = self.recv(BUFSIZ)
                 res_loaded = pickle.loads(res)
-
-                if res_loaded[0] == '/port':
-                    msg_return = ' '.join(('!port', TCP_PORT))
+                
+                if res_loaded[0] in self.actions.keys():
+                    command = self.actions[res_loaded[0]]
+                    del self.actions[res_loaded[0]]
+                    self.execute_command(command, res_loaded[1])                
+                
+                if type(res_loaded[0]) == str and res_loaded[0] == '/port':
+                    msg_return = ' '.join(('!port', str(TCP_PORT)))
                     self.send(msg_return.encode())
 
-                if res_loaded[0] in self.actions:
-                    self.actions.remove(res_loaded[0])
-                    print(res_loaded[0])
-                    self.execute_command(res_loaded[0], res_loaded[1])
 
             # In case of connection error, disconnect the client
             except (ConnectionResetError, Exception) as e:
-                pass
+                raise e
 
     def send_command(self, command: str) -> None:
         '''
         placeholder
 
         '''
-        self.actions.append(command)
-        self.send(command.encode())
+        num_of_action = len(self.actions)
+        self.actions[str(num_of_action)] = command
+        self.send(' '.join((command,str(num_of_action))).encode())
 
     def update_torrent_server(self, update: str) -> None:
         '''
@@ -273,13 +276,12 @@ class TorrentClient(socket.socket):
         # get the file name from the file path
         file_name = file_path.split('/')[-1].split('.')[0]
 
-        peers = peers_info[0]
+        peers = peers_info[0].values()
         file_parts_paths = torrent_utils.package_computer_parts(
             file_name, file_path, len(peers), len(peers)//2)
-        print('hello')
-        
+
         # create socket connection with peers
-        socket_peers = []
+        socket_peers = list()
         for peer in peers:
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -287,15 +289,17 @@ class TorrentClient(socket.socket):
                 socket_peers.append(s)
             except ConnectionRefusedError:
                 continue
-
+        print(len(socket_peers))
+        print(len(file_parts_paths))
         # create processesing pool and start sending the files
         with multiprocessing.pool.ThreadPool(processes=len(peers)) as pool:
-            for file_status in pool.starmap(send_file, (file_parts_paths, socket_peers)):
+            for file_status in pool.starmap(send_file, zip(file_parts_paths, socket_peers)):
                 if file_status[0]:
                     peer_ip = file_status[2].gethostbyname(
                         file_status[2].gethostname())
-                    self.update_torrent_server(
-                        ' '.join(('/update', file_status[1], (peers_info[1][peer_ip]))))
+                    update_command = ' '.join(
+                        ('!update', file_status[1], (peers_info[1][peer_ip])))
+                    self.update_torrent_server(update_command)
                 else:
                     pass
 
@@ -303,8 +307,9 @@ class TorrentClient(socket.socket):
         for peer in socket_peers:
             peer.close()
 
+        print(file_parts_paths[0])
         # delete the temp dir storing the tar files
-        shutil.rmtree(os.path.dirname(file_parts_paths[0]))
+        shutil.rmtree(os.path.dirname(file_parts_paths[0][0]))
 
 
 def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, socket.socket]:
@@ -323,6 +328,12 @@ def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, soc
         file_size = os.path.getsize(file_path)
         peer.send(f"/upload_part {file_name} {file_size}".encode())
 
+        while True:
+            status = peer.recv(BUFSIZ).decode()
+            if status == '!OK':
+                break
+            else:
+                return [False, file_parts_paths[1], peer] 
         # Open the file for reading
         with open(file_path, 'rb') as file:
             # Send file chunks until the entire file is sent
@@ -330,8 +341,9 @@ def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, soc
                 chunk = file.read(BUFSIZ)
                 if not chunk:
                     break
+                print('hello')
                 peer.send(chunk)
-    except (ConnectionResetError, Exception) as e:
+    except (ConnectionResetError) as e:
         return [False, file_parts_paths[1], peer]
     return [True, file_parts_paths[1], peer]
 

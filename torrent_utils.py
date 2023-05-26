@@ -84,7 +84,6 @@ def package_computer_parts(file_name: str, file_path: str, N: int, M: int) -> li
     
 
     # seperate the file into different parts and create a temp directory for later storage
-    print(file_path)
     computer_parts = divide_to_computers(file_path, N, M)
     temp_dir = tempfile.mkdtemp()
 

@@ -72,10 +72,11 @@ class TorrentServer(socket.socket):
                     self.CONNECTION_LIST.append(new_socket)
                     self.ID_BY_SOCKET[new_socket] = networking_utils.get_hostname(new_socket)
                     self.ID_BY_IP[address[0]] = self.ID_BY_SOCKET[new_socket]
+                    new_socket.send(pickle.dumps(['/port',]))
                 else:
                     try:
-                        res = sock.recv(BUFSIZ).decode()
-                        self.handle_client_commands(sock, res)
+                        sock_data = sock.recv(BUFSIZ).decode()
+                        self.handle_client_commands(sock, sock_data)
 
                     # In case of connection error, disconnect the client
                     except (ConnectionResetError, Exception) as e:
@@ -84,7 +85,7 @@ class TorrentServer(socket.socket):
             for sock in write_sockets:
                 try:     
                     if sock not in self.PEER_PORT:
-                        sock.send('/port'.encode())
+                        sock.send(pickle.dumps(['/port',]))
                 except (ConnectionResetError, Exception) as e:
                     self.disconnect(sock)
                 
@@ -100,12 +101,11 @@ class TorrentServer(socket.socket):
         Returns:
             str: A message to be sent back to the client.
         '''
-        parts = command.split()
+        parts = command.split(' ')
         msg_return = ''
 
         if parts[0] == '/upload':
-            peers = self.PEER_INFO
-            msg_return = pickle.dumps((command, (peers, self.ID_BY_IP)))
+            msg_return = pickle.dumps((parts[-1], (self.PEER_INFO, self.ID_BY_IP)))
 
         elif parts[0] == '/download':
             pass
@@ -121,6 +121,8 @@ class TorrentServer(socket.socket):
             client_ip = networking_utils.get_ip_adress(client)
             self.PEER_INFO[self.ID_BY_SOCKET[client]] = (
                 client_ip, peer_port)
+        elif parts[0] == '!update':
+            pass
 
         if msg_return:
             client.send(msg_return)
