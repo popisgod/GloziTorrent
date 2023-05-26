@@ -3,7 +3,8 @@ import socket
 import select
 import pickle
 import utils.networking_utils as networking_utils
-
+import sqlite3 
+import json
 
 # --- Network Configuration ---
 
@@ -128,7 +129,7 @@ class TorrentServer(socket.socket):
                 client_ip, peer_port)
             
         elif parts[0] == '!update':
-            print(command)
+            json.loads(part[1])
 
         if msg_return:
             client.send(msg_return)

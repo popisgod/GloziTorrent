@@ -1,7 +1,7 @@
 import json 
 import utils.torrent_utils as torrent_utils
 
-def setup():
+def setup_peer():
     '''
     
     '''
@@ -12,5 +12,10 @@ def setup():
         data = json.dumps(PEER_INFO)
         f.write(data)
 
+def setup_server():
+    '''
+    create the sql server 
+    '''
+    
+
 if __name__=='__main__':
-    setup()

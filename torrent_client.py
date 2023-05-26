@@ -248,7 +248,7 @@ class TorrentClient(socket.socket):
     def send_command(self, command: str) -> None:
         '''
         placeholder
-
+    
         '''
         num_of_action = len(self.actions)
         self.actions[str(num_of_action)] = command
@@ -368,7 +368,7 @@ def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, soc
 
 if __name__ == '__main__':
     if not os.path.exists(os.path.join(os.getcwd(),'settings.json')):
-        setup.setup()
+        setup.setup_peer()
     
     torrent_client = TorrentClient.server()
     peer_to_peer = PeerToPeer.server()
