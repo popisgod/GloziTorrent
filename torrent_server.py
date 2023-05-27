@@ -80,12 +80,16 @@ class TorrentServer(socket.socket):
                     new_socket.send(pickle.dumps(['/peerinfo',]))
                 else:
                     try:
-                        sock_data = sock.recv(BUFSIZ).decode()
+                        sock_data = sock.recv(BUFSIZ)
+                        if not sock_data:
+                            self.disconnect(sock)
+                            continue
                         self.handle_client_commands(sock, sock_data)
 
                     # In case of connection error, disconnect the peer 
                     except (ConnectionResetError, Exception) as e:
                         self.disconnect(sock)
+                        raise e 
 
             for sock in write_sockets:  
                 try:     
@@ -97,8 +101,8 @@ class TorrentServer(socket.socket):
                 # In case of connection error with the peer socket, disconnnect the peer     
                 except (ConnectionResetError, Exception) as e:
                     self.disconnect(sock)
-            if _: 
-                print(_)
+                    raise e 
+
 
     def handle_client_commands(self, client: socket.socket, command:  str) -> None:
         '''
@@ -111,11 +115,13 @@ class TorrentServer(socket.socket):
         Returns:
             str: A message to be sent back to the client.
         '''
-        parts = command.split(' ')
+        parts = command.decode(errors='ignore').split(' ')
         msg_return = ''
 
         if parts[0] == '/upload':
-            msg_return = pickle.dumps((parts[-1], (self.PEER_INFO, self.ID_BY_IP)))
+            inv_PEER_INFO = {v: k for k, v in self.PEER_INFO.items()}
+
+            msg_return = pickle.dumps([parts[2], inv_PEER_INFO])
             print('upload request from', client.getpeername())
 
         elif parts[0] == '/download':
@@ -140,24 +146,46 @@ class TorrentServer(socket.socket):
 
             print('got peerinfo of', client.getpeername())
             
-        elif parts[0] == '!update':
-            metadata = json.loads(parts[1])
-            peer_id = parts[2]
-            
-       
-            sql_data = [metadata['file_name'], metadata['file_extension'],int(metadata['file_size']), metadata['parts']]
-            sql = '''
-            INSERT INTO torrent (file_name, file_extension, file_size, parts)
-            VALUES (?,?,?,?)
-          '''
-            
+        elif command[:7].decode() == '!update':
+            data = pickle.loads(command[7:])
+                        
+            metadata = json.loads(data[0])
+            peer_id = data[1]
+
+
             with sqlite3.connect('torrent.db') as conn:
                 c = conn.cursor()
-                c.execute(sql,sql_data)
-                conn.commit()
-            
-            print('got an update from',client.getpeername())
+                c.execute("SELECT * FROM torrent WHERE file_name=?", (metadata['file_name'],))
+                row = c.fetchone()
+
+                if row is None:
+                    parts =  {}.fromkeys(range(int(metadata['file_size'])), list())
+                    for i in metadata['parts'].keys():
+                        parts[int(i)] = [peer_id,]
+
+                        
+                    sql_data = [metadata['file_name'], metadata['file_extension'],int(metadata['file_size']), json.dumps(parts)]
+                    sql = '''
+                    INSERT INTO torrent (file_name, file_extension, file_size, parts)
+                    VALUES (?,?,?,?)
+                    '''
+                    
+                    c.execute(sql,sql_data)
+                    conn.commit()
+                else: 
+                    parts = json.loads(row[4])
+                    for i in metadata['parts'].keys():
+                        parts[i].append(peer_id)
+                    
+                    c.execute("UPDATE torrent SET parts=? WHERE file_id=?", (json.dumps(parts), row[0]))
+                    conn.commit()
+
+                    if c.rowcount < 0:
+                        print('update failed')
                 
+            print('got an update from',client.getpeername())
+            client.send(pickle.dumps(['/received_update',]))
+            
         if msg_return:
             client.send(msg_return)
 
@@ -173,7 +201,7 @@ class TorrentServer(socket.socket):
         '''
         if sock in self.CONNECTION_LIST: 
             self.CONNECTION_LIST.remove(sock)
-            print(f'{sock.getpeername()} has left')
+
         print(f'{sock.getpeername()} has left')
         sock.close()
 

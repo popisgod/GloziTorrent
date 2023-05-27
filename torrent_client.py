@@ -17,7 +17,7 @@ from pathlib import Path
 
 # Define host IP address, TCP port, and buffer size
 HOST = ''
-TORRENT_SERVER = '192.168.84.191'
+TORRENT_SERVER = '10.100.102.3'
 TORRENT_PORT = 50142
 HOST_IP = networking_utils.get_host_ip()
 TCP_PORT = networking_utils.get_open_port()
@@ -101,7 +101,7 @@ class PeerToPeer(socket.socket):
                             # If the entire file is received, close the file and remove the client from the dictionary
                             if self.file_transfers[sock]['remaining_size'] == 0:
                                 file.close()
-                                print(f"File {self.file_transfers[sock]['file_name']} received")
+                                print(f"File {self.file_transfers[sock]['file_name']} has been received from",sock.getpeername())
                                 
                                 # extract tar file and delete it 
                                 file_dir = os.path.join(os.getcwd(), self.file_transfers[sock]['file_name'] + '.torrent')
@@ -154,7 +154,6 @@ class PeerToPeer(socket.socket):
             self.file_transfers[client]['file_name'] = file_name
             self.file_transfers[client]['file'] = open(file_path, 'wb')
             self.file_transfers[client]['remaining_size'] = file_size
-            print(file_path)
 
             client.send('!OK'.encode())
 
@@ -218,7 +217,7 @@ class TorrentClient(socket.socket):
         # connect to the server socket
         self.connect((TORRENT_SERVER, TORRENT_PORT))
         self.actions = {}
-
+        
     def receive_wrapper(self) -> None:
         '''
         placeholder
@@ -227,7 +226,11 @@ class TorrentClient(socket.socket):
         while True:
             try:
                 res = self.recv(BUFSIZ)
-                print(res.decode(errors='ignore'))
+                
+                if not res:
+                    print('server has disconnected') 
+                    break 
+                
                 res_loaded = pickle.loads(res)
                 
                 if res_loaded[0] in self.actions.keys():
@@ -242,7 +245,9 @@ class TorrentClient(socket.socket):
                     
                     msg_return = ' '.join(('!peerinfo', str(TCP_PORT), settings['UUID']))
                     self.send(msg_return.encode())
-
+                    
+                if type(res_loaded[0]) == str and res_loaded[0] == '/received_update':
+                    self.received_update = True
 
             # In case of connection error, disconnect the client
             except (ConnectionResetError, Exception) as e:
@@ -261,7 +266,7 @@ class TorrentClient(socket.socket):
         '''
         placeholder
         '''
-        self.send(update.encode())
+        self.send(update)
 
     def execute_command(self, command: str, other) -> None:
         '''
@@ -299,8 +304,8 @@ class TorrentClient(socket.socket):
 
         # get the file name from the file path
         file_name = Path(file_path).name.split('.')[0]
-
-        peers = peers_info[0].values()
+        
+        peers = peers_info.keys()
         file_parts_paths = torrent_utils.package_computer_parts(
             file_name, file_path, len(peers), len(peers)//2)
 
@@ -313,17 +318,26 @@ class TorrentClient(socket.socket):
                 socket_peers.append(s)
             except ConnectionRefusedError:
                 continue
-
-
+            
+        # update server on upload status 
+        self.update_torrent_server('!upload_status up'.encode())
+        
+        bug = ''
+        index = 1 
+        
         # create processesing pool and start sending the files
         with multiprocessing.pool.ThreadPool(processes=len(peers)) as pool:
             for file_status in pool.starmap(send_file, zip(file_parts_paths, socket_peers)):
                 if file_status[0]:
-                    peer_ip = networking_utils.get_ip_adress(file_status[2])
                     print('updated server')
-                    update_command = ' '.join(
-                        ('!update', file_status[1], (peers_info[1][peer_ip])))
+                    update_command = '!update'.encode() + pickle.dumps([file_status[1], peers_info[file_status[2].getpeername()]])
                     self.update_torrent_server(update_command)
+                    
+                    while True:
+                        data = self.recv(BUFSIZ)
+                        if pickle.loads(data)[0] == '/received_update':
+                            break 
+                                            
                 else:
                     pass
 
@@ -366,6 +380,7 @@ def send_file(file_parts_paths: str, peer: socket.socket):
                     break
                 peer.send(chunk)
     except (ConnectionResetError) as e:
+        raise e 
         return [False, file_parts_paths[1], peer]
     return [True, file_parts_paths[1], peer]
 
