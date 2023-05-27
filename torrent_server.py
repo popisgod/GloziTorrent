@@ -7,6 +7,7 @@ import json
 import os 
 import utils.networking_utils as networking_utils
 import utils.setup as setup 
+import time 
 
 # --- Network Configuration ---
 
@@ -51,6 +52,8 @@ class TorrentServer(socket.socket):
         self.ID_BY_IP = {}
         self.PEER_PORT = {}
         self.PEER_INFO = {}
+        self.start_time = time.time()
+        self.update_peer = time.time()
 
     def handle_connections(self) -> None:
         '''
@@ -80,17 +83,22 @@ class TorrentServer(socket.socket):
                         sock_data = sock.recv(BUFSIZ).decode()
                         self.handle_client_commands(sock, sock_data)
 
-                    # In case of connection error, disconnect the client
+                    # In case of connection error, disconnect the peer 
                     except (ConnectionResetError, Exception) as e:
                         self.disconnect(sock)
 
-            for sock in write_sockets:
+            for sock in write_sockets:  
                 try:     
-                    if sock not in self.PEER_PORT:
-                        sock.send(pickle.dumps(['/peerinfo',]))
+                    if  time.time() - self.update_peer > 1: 
+                        self.update_peer = time.time()
+                        if sock not in self.PEER_PORT.keys():
+                            sock.send(pickle.dumps(['/peerinfo',]))
+
+                # In case of connection error with the peer socket, disconnnect the peer     
                 except (ConnectionResetError, Exception) as e:
                     self.disconnect(sock)
-                
+            if _: 
+                print(_)
 
     def handle_client_commands(self, client: socket.socket, command:  str) -> None:
         '''
@@ -107,8 +115,8 @@ class TorrentServer(socket.socket):
         msg_return = ''
 
         if parts[0] == '/upload':
-            print('hello')
             msg_return = pickle.dumps((parts[-1], (self.PEER_INFO, self.ID_BY_IP)))
+            print('upload request from', client.getpeername())
 
         elif parts[0] == '/download':
             pass
@@ -126,10 +134,11 @@ class TorrentServer(socket.socket):
             self.ID_BY_SOCKET[client] = PEER_UUID
             self.ID_BY_IP[client_ip] = PEER_UUID
 
-          
             self.PEER_PORT[client] = peer_port
             self.PEER_INFO[PEER_UUID] = (
                 client_ip, peer_port)
+
+            print('got peerinfo of', client.getpeername())
             
         elif parts[0] == '!update':
             metadata = json.loads(parts[1])
@@ -146,13 +155,9 @@ class TorrentServer(socket.socket):
                 c = conn.cursor()
                 c.execute(sql,sql_data)
                 conn.commit()
-                
-          
             
-
-
-
-
+            print('got an update from',client.getpeername())
+                
         if msg_return:
             client.send(msg_return)
 
@@ -169,6 +174,7 @@ class TorrentServer(socket.socket):
         if sock in self.CONNECTION_LIST: 
             self.CONNECTION_LIST.remove(sock)
             print(f'{sock.getpeername()} has left')
+        print(f'{sock.getpeername()} has left')
         sock.close()
 
 
