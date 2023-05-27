@@ -10,13 +10,14 @@ from threading import Thread
 import utils.networking_utils as networking_utils
 import utils.torrent_utils as torrent_utils
 import utils.setup as setup
+from pathlib import Path
 
 # --- Network Configuration ---
 
 
 # Define host IP address, TCP port, and buffer size
 HOST = ''
-TORRENT_SERVER = '10.100.102.3'
+TORRENT_SERVER = '192.168.84.191'
 TORRENT_PORT = 50142
 HOST_IP = networking_utils.get_host_ip()
 TCP_PORT = networking_utils.get_open_port()
@@ -153,7 +154,8 @@ class PeerToPeer(socket.socket):
             self.file_transfers[client]['file_name'] = file_name
             self.file_transfers[client]['file'] = open(file_path, 'wb')
             self.file_transfers[client]['remaining_size'] = file_size
-            
+            print(file_path)
+
             client.send('!OK'.encode())
 
         elif parts[0] == '/download':
@@ -225,6 +227,7 @@ class TorrentClient(socket.socket):
         while True:
             try:
                 res = self.recv(BUFSIZ)
+                print(res.decode(errors='ignore'))
                 res_loaded = pickle.loads(res)
                 
                 if res_loaded[0] in self.actions.keys():
@@ -280,8 +283,8 @@ class TorrentClient(socket.socket):
         elif parts[0] == '/download_complete':
             pass
 
-    def upload_file_to_network(self, peers_info: tuple((list[(str, int)],
-                                                       dict)), file_path: str) -> None:
+    # tuple((list[(str, int)],dict))
+    def upload_file_to_network(self, peers_info: tuple, file_path: str) -> None:
         '''
         divides the file and uploads it to the peers that are in the provided list. 
         updates the torrent server about the upload.
@@ -295,7 +298,7 @@ class TorrentClient(socket.socket):
         '''
 
         # get the file name from the file path
-        file_name = file_path.split('/')[-1].split('.')[0]
+        file_name = Path(file_path).name.split('.')[0]
 
         peers = peers_info[0].values()
         file_parts_paths = torrent_utils.package_computer_parts(
@@ -317,6 +320,7 @@ class TorrentClient(socket.socket):
             for file_status in pool.starmap(send_file, zip(file_parts_paths, socket_peers)):
                 if file_status[0]:
                     peer_ip = networking_utils.get_ip_adress(file_status[2])
+                    print('updated server')
                     update_command = ' '.join(
                         ('!update', file_status[1], (peers_info[1][peer_ip])))
                     self.update_torrent_server(update_command)
@@ -330,8 +334,8 @@ class TorrentClient(socket.socket):
         # delete the temp dir storing the tar files
         shutil.rmtree(os.path.dirname(file_parts_paths[0][0]))
 
-
-def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, socket.socket]:
+#  -> list[bool, str, socket.socket]
+def send_file(file_parts_paths: str, peer: socket.socket):
     '''
 
 
@@ -343,7 +347,7 @@ def send_file(file_parts_paths: str, peer: socket.socket) -> list[bool, str, soc
     try:
         # get the file name and size to send the server
         file_path = file_parts_paths[0]
-        file_name = file_path.split('\\')[-1].split('.')[0].split('-')[0]
+        file_name = Path(file_path).name.split('.')[0].split('-')[0]
         file_size = os.path.getsize(file_path)
         peer.send(f"/upload_part {file_name} {file_size}".encode())
 

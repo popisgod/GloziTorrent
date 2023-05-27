@@ -1,5 +1,6 @@
 import json 
 import utils.torrent_utils as torrent_utils
+import sqlite3
 
 def setup_peer():
     '''
@@ -16,7 +17,21 @@ def setup_server():
     '''
     create the sql server 
     '''
-    
+    with open('torrent.db','w') as _:
+        pass
+    with sqlite3.connect('torrent.db') as conn:
+        c = conn.cursor()
+
+        c.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS torrent
+            ([file_id] INTEGER PRIMARY KEY, 
+            [file_name] TEXT,
+            [file_extension] TEXT,
+            [file_size] INTEGER,
+            [parts] TEXT)
+            ''')
+        conn.commit()
 
 if __name__=='__main__': 
     pass

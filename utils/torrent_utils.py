@@ -8,8 +8,8 @@ import os
 import pathlib
 
 # --- file transportation --- 
-
-def divide_into_parts(file_path: str, N: int) -> list[(int,bin)]:
+#  -> list[(int,bin)]
+def divide_into_parts(file_path: str, N: int):
     '''
     divides the file into equal binary parts 
 
@@ -37,8 +37,8 @@ def divide_into_parts(file_path: str, N: int) -> list[(int,bin)]:
 
     return chunks
 
-
-def divide_to_computers(file_path: str, N: int, M: int) -> list[list[(int,bin)]]:
+# -> list[list[(int,bin)]]
+def divide_to_computers(file_path: str, N: int, M: int):
     '''
     divides the parts into differnt computers and adds redundant parts for backup
 
@@ -66,8 +66,8 @@ def divide_to_computers(file_path: str, N: int, M: int) -> list[list[(int,bin)]]
 
     return computer_parts
 
-
-def package_computer_parts(file_name: str, file_path: str, N: int, M: int) -> list[str, dict]:
+#-> list[str, dict]
+def package_computer_parts(file_name: str, file_path: str, N: int, M: int) :
     '''
     packages the computer parts in a tar file for transporting 
 
@@ -111,6 +111,7 @@ def package_computer_parts(file_name: str, file_path: str, N: int, M: int) -> li
 
         # create the name of the tar file
         tar_name = ''.join((file_name,'-', str(i)))
+        print(tar_name)
 
         path_and_metadata = (os.path.join(temp_dir, tar_name), json.dumps(metadata))
         paths_and_metadatas.append(path_and_metadata)
@@ -119,7 +120,8 @@ def package_computer_parts(file_name: str, file_path: str, N: int, M: int) -> li
 
     return paths_and_metadatas
 
-def create_tar_file(file_data: list[str], output_path: str):
+# list[str]
+def create_tar_file(file_data: list , output_path: str):
     '''
     packages files into a tar file
 
@@ -135,7 +137,7 @@ def create_tar_file(file_data: list[str], output_path: str):
     with tarfile.open(output_path, 'w') as tar:
         for file_name, file_content in file_data:
             tar_info = tarfile.TarInfo(name=file_name)
-            file_content_bytes = file_content  # Convert string to bytes if needed
+            file_content_bytes = file_content  
             tar_info.size = len(file_content_bytes)
 
             # Add the file to the TAR archive using the file content as a file-like object
@@ -154,8 +156,8 @@ def generate_random_hash():
 
     return hash_value
 
-
-def connect_file(chunks: list[bin]):
+# list[bin]
+def connect_file(chunks: list):
     '''
 
     '''

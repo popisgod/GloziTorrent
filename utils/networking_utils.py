@@ -77,8 +77,8 @@ def get_server_time(code: int = 0) -> str:
 
     return server_time
 
-
-def get_random_quotes(number_of_quotes: int) -> list[(str, str)]:
+# -> list[(str, str)]
+def get_random_quotes(number_of_quotes: int):
     '''
     placeholder 
     '''

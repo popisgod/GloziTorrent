@@ -2,9 +2,11 @@
 import socket
 import select
 import pickle
-import utils.networking_utils as networking_utils
 import sqlite3 
 import json
+import os 
+import utils.networking_utils as networking_utils
+import utils.setup as setup 
 
 # --- Network Configuration ---
 
@@ -85,7 +87,7 @@ class TorrentServer(socket.socket):
             for sock in write_sockets:
                 try:     
                     if sock not in self.PEER_PORT:
-                        sock.send(pickle.dumps(['/port',]))
+                        sock.send(pickle.dumps(['/peerinfo',]))
                 except (ConnectionResetError, Exception) as e:
                     self.disconnect(sock)
                 
@@ -105,6 +107,7 @@ class TorrentServer(socket.socket):
         msg_return = ''
 
         if parts[0] == '/upload':
+            print('hello')
             msg_return = pickle.dumps((parts[-1], (self.PEER_INFO, self.ID_BY_IP)))
 
         elif parts[0] == '/download':
@@ -129,7 +132,26 @@ class TorrentServer(socket.socket):
                 client_ip, peer_port)
             
         elif parts[0] == '!update':
-            json.loads(part[1])
+            metadata = json.loads(parts[1])
+            peer_id = parts[2]
+            
+       
+            sql_data = [metadata['file_name'], metadata['file_extension'],int(metadata['file_size']), metadata['parts']]
+            sql = '''
+            INSERT INTO torrent (file_name, file_extension, file_size, parts)
+            VALUES (?,?,?,?)
+          '''
+            
+            with sqlite3.connect('torrent.db') as conn:
+                c = conn.cursor()
+                c.execute(sql,sql_data)
+                conn.commit()
+                
+          
+            
+
+
+
 
         if msg_return:
             client.send(msg_return)
@@ -151,4 +173,6 @@ class TorrentServer(socket.socket):
 
 
 if __name__ == '__main__':
+    if not os.path.exists(os.path.join(os.getcwd(),'torrent.db')):
+        setup.setup_server()
     torrent_server = TorrentServer.server()
