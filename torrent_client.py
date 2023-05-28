@@ -88,13 +88,13 @@ class PeerToPeer(socket.socket):
                 else:
 
                     try:
-                        res = sock.recv(BUFSIZ).decode()
+                        res = sock.recv(BUFSIZ)
 
                         # If file information is not yet received, interpret the received data as file info
                         if sock in self.file_transfers:
                             file = self.file_transfers[sock]['file']
                             remaining_size = self.file_transfers[sock]['remaining_size']
-                            file.write(res.encode())
+                            file.write(res)
                             self.file_transfers[sock]['remaining_size'] = remaining_size - len(
                                 res)
 
@@ -116,7 +116,7 @@ class PeerToPeer(socket.socket):
                                 
                                 
                         else:
-                            self.handle_client_commands(sock, res)
+                            self.handle_client_commands(sock, res.decode())
 
                     # In case of connection error, disconnect the client
                     except (ConnectionResetError, Exception) as e:
