@@ -89,7 +89,6 @@ class TorrentServer(socket.socket):
                     # In case of connection error, disconnect the peer 
                     except (ConnectionResetError, Exception) as e:
                         self.disconnect(sock)
-                        raise e 
 
             for sock in write_sockets:  
                 try:     
@@ -101,7 +100,6 @@ class TorrentServer(socket.socket):
                 # In case of connection error with the peer socket, disconnnect the peer     
                 except (ConnectionResetError, Exception) as e:
                     self.disconnect(sock)
-                    raise e 
 
 
     def handle_client_commands(self, client: socket.socket, command:  str) -> None:
@@ -116,16 +114,29 @@ class TorrentServer(socket.socket):
             str: A message to be sent back to the client.
         '''
         parts = command.decode(errors='ignore').split(' ')
+        command_id = parts[2]
         msg_return = ''
 
         if parts[0] == '/upload':
             inv_PEER_INFO = {v: k for k, v in self.PEER_INFO.items()}
 
-            msg_return = pickle.dumps([parts[2], inv_PEER_INFO])
+            msg_return = pickle.dumps([command_id, inv_PEER_INFO])
             print('upload request from', client.getpeername())
 
         elif parts[0] == '/download':
-            pass
+            with sqlite3.connect('torrent.db') as conn:
+                c = conn.cursor()
+                c.execute("SELECT * FROM torrent WHERE file_name=?", (parts[1].split('.')[0],))
+                row = c.fetchone()
+                inv_PEER_INFO = {v: k for k, v in self.PEER_INFO.items()}
+                           
+                if row is None:
+                    pass
+                else:
+                    parts = json.loads(row[4])
+
+                    msg_return = pickle.dumps([command_id, (inv_PEER_INFO, self.PEER_INFO, parts)])
+                    
         elif parts[0] == '/disconnect':
             pass
         elif parts[0] == '/upload_complete':

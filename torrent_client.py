@@ -11,6 +11,7 @@ import utils.networking_utils as networking_utils
 import utils.torrent_utils as torrent_utils
 import utils.setup as setup
 from pathlib import Path
+import time
 
 # --- Network Configuration ---
 
@@ -91,7 +92,7 @@ class PeerToPeer(socket.socket):
                         res = sock.recv(BUFSIZ)
 
                         # If file information is not yet received, interpret the received data as file info
-                        if sock in self.file_transfers:
+                        if sock in self.file_transfers and self.file_transfers[sock]['status'] == 'UP':
                             file = self.file_transfers[sock]['file']
                             remaining_size = self.file_transfers[sock]['remaining_size']
                             file.write(res)
@@ -116,12 +117,32 @@ class PeerToPeer(socket.socket):
                                 
                                 
                         else:
+                            if not res:
+                                # print('crash')
+                                # print(sock)
+                                self.disconnect(sock)
+                                print('crash')
+                                continue
+                                
                             self.handle_client_commands(sock, res.decode())
 
                     # In case of connection error, disconnect the client
                     except (ConnectionResetError, Exception) as e:
-                        raise e
+                        raise e 
+                        print(e)
                         self.disconnect(sock)
+                        
+            for sock in write_sockets:
+                if sock in self.file_transfers and self.file_transfers[sock]['status'] == 'DOWN':
+                    file = self.file_transfers[sock]['file']
+                    sock.send(file.read(BUFSIZ))
+                    self.file_transfers[sock]['remaining_size'] -= BUFSIZ
+                    if self.file_transfers[sock]['remaining_size'] < 0:
+                        file.close()
+                        print(f"File {self.file_transfers[sock]['file_name']} has been downloaded from",sock.getpeername())
+                        self.disconnect(sock)
+    
+
 
     def handle_client_commands(self, client: socket.socket, command:  str) -> None:
         '''
@@ -145,7 +166,8 @@ class PeerToPeer(socket.socket):
                 'file_name': None,
                 'file': None,
                 'remaining_size': 0,
-                'file_path' : None
+                'file_path' : None,
+                'file_status' : 'UP'
             }  
 
             # Open the file for writing
@@ -158,7 +180,26 @@ class PeerToPeer(socket.socket):
             client.send('!OK'.encode())
 
         elif parts[0] == '/download':
-            pass
+            self.file_transfers[client] = {
+                'file_name': None,
+                'file': None,
+                'remaining_size': 0,
+                'file_path' : None,
+                'status' : 'DOWN'
+            }  
+            
+            print(parts)
+            with open(os.path.join(parts[1] + '.torrent','metadata.json'), 'r') as file:
+                metadata = json.loads(file.read())
+            file_path = os.path.join(parts[1] + '.torrent', metadata['parts'][parts[2]] + '.bin')
+
+            self.file_transfers[client]['file_name'] = parts[1]
+            self.file_transfers[client]['file'] = open(file_path, 'rb')
+            self.file_transfers[client]['remaining_size'] = os.path.getsize(file_path)
+            print('size', parts[1], )
+            client.send(str(self.file_transfers[client]['remaining_size']).encode())
+
+            
         elif parts[0] == '/disconnect':
             pass
         elif parts[0] == '/upload_complete':
@@ -179,7 +220,11 @@ class PeerToPeer(socket.socket):
         Returns:
             None.
         '''
+        
 
+
+
+        print('socket has been disconnected', sock.getpeername())
         self.CONNECTION_LIST.remove(sock)
         sock.close()
 
@@ -251,7 +296,9 @@ class TorrentClient(socket.socket):
 
             # In case of connection error, disconnect the client
             except (ConnectionResetError, Exception) as e:
-                raise e
+                raise e 
+                print(e)
+                pass
 
     def send_command(self, command: str) -> None:
         '''
@@ -268,7 +315,7 @@ class TorrentClient(socket.socket):
         '''
         self.send(update)
 
-    def execute_command(self, command: str, other) -> None:
+    def execute_command(self, command: str, other : list) -> None:
         '''
         Process a command received from the client.
 
@@ -278,9 +325,9 @@ class TorrentClient(socket.socket):
 
         if parts[0] == '/upload':
             self.upload_file_to_network(other, parts[1])
-
-        elif parts[0] == '/downlod':
-            pass
+            
+        elif parts[0] == '/download':
+            self.download_file((other[0],other[1]),other[2],parts[1])
         elif parts[0] == '/disconnect':
             pass
         elif parts[0] == '/upload_complete':
@@ -319,12 +366,6 @@ class TorrentClient(socket.socket):
             except ConnectionRefusedError:
                 continue
             
-        # update server on upload status 
-        self.update_torrent_server('!upload_status up'.encode())
-        
-        bug = ''
-        index = 1 
-        
         # create processesing pool and start sending the files
         with multiprocessing.pool.ThreadPool(processes=len(peers)) as pool:
             for file_status in pool.starmap(send_file, zip(file_parts_paths, socket_peers)):
@@ -347,6 +388,108 @@ class TorrentClient(socket.socket):
 
         # delete the temp dir storing the tar files
         shutil.rmtree(os.path.dirname(file_parts_paths[0][0]))
+
+    def download_file( self, peer_info, parts, file_path : str) -> None:
+        '''
+        divides the file and uploads it to the peers that are in the provided list. 
+        updates the torrent server about the upload.
+
+        Args: 
+            peers list[(str,int)]: ip and port pairs of the peers sockets 
+            file_path (str): file path 
+
+        Returns: 
+            None.
+        '''
+
+        # get the file name from the file path
+        file_name = file_path.split('.')[0]
+        file_size =  len(parts.keys())    
+        peers = peer_info[0].keys()
+        selected_ids = {}
+        socket_peers = {}
+        used_ids = set()  
+        
+
+        for part_num, ids in parts.items():
+            for id_ in ids:
+                if id_ not in peer_info[1] or id_ in used_ids:
+                    # If the ID doesn't exist in another_dict or it's already used, find a different ID
+                    for new_id, value in peer_info[1].items():
+                        if new_id not in used_ids and new_id not in selected_ids.values():
+                            selected_ids[part_num] = new_id
+                            used_ids.add(new_id)
+                            break
+                    else:
+                        # If no unused ID is found, reuse an ID that has already been used
+                        for existing_id in used_ids:
+                            selected_ids[part_num] = existing_id
+                            break
+                else:
+                    selected_ids[part_num] = id_
+                    used_ids.add(id_)
+                    break
+
+        print(selected_ids)               
+                
+        for id in selected_ids.values():
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect(peer_info[1][id])
+            socket_peers[s.getpeername()] = s
+
+        print(peers)
+        os.makedirs(file_name + '.download')
+        # create processesing pool and start sending the files
+        with multiprocessing.pool.ThreadPool(processes=len(peers)) as pool:
+            for download_status in pool.starmap(download, [(selected_ids[str(i)],str(i),socket_peers,peer_info[1],file_name, i) for i in range(file_size)]):
+                success = download_status[0]
+                part = download_status[1]
+                
+                if success:       
+                    print('finished', part)
+                else:
+                    print('failed', part)
+                
+
+        # close the peer sockets
+        for peer in socket_peers.values():
+            peer.close()
+        print('finished downloading')
+
+
+
+
+
+def download(selected_id: list, part: socket.socket,peers : dict, peer_info : dict, file_name, sleep_time : int) -> list[bool,int]:
+    time.sleep(sleep_time + 2)
+
+    peer = peers[peer_info[selected_id]]
+    file_size = None
+    file = open(os.path.join(file_name + '.download', part), 'wb')
+    
+    try: 
+        msg = ' '.join(('/download',file_name,part))
+        print(msg)
+        peer.send(msg.encode())
+        data = peer.recv(BUFSIZ)
+        file_size = int(data.decode()) 
+        
+        while file_size > 0:
+            data = peer.recv(BUFSIZ)
+            file_size = file_size - len(data)
+            print(data)
+            file.write(data)
+        file.close()
+        print('closed file', part)
+        return [True,part]
+        
+    except (ConnectionRefusedError, ConnectionAbortedError) as e:
+        raise e 
+        return [False, part]
+    return [False, part]
+    
+
+
 
 #  -> list[bool, str, socket.socket]
 def send_file(file_parts_paths: str, peer: socket.socket):
