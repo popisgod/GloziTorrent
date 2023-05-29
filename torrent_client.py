@@ -128,7 +128,6 @@ class PeerToPeer(socket.socket):
 
                     # In case of connection error, disconnect the client
                     except (ConnectionResetError, Exception) as e:
-                        raise e 
                         print(e)
                         self.disconnect(sock)
                         
@@ -296,7 +295,6 @@ class TorrentClient(socket.socket):
 
             # In case of connection error, disconnect the client
             except (ConnectionResetError, Exception) as e:
-                raise e 
                 print(e)
                 pass
 
@@ -455,6 +453,14 @@ class TorrentClient(socket.socket):
         for peer in socket_peers.values():
             peer.close()
         print('finished downloading')
+        
+        with open(os.path.join(file_name + '.download', file_path),'wb') as file:
+            for i in range(len(parts.keys())):
+                with open(os.path.join(file_name + '.download', str(i)),'rb') as part: 
+                    file.write(part.read())
+                    
+                    
+            
 
 
 
@@ -484,7 +490,6 @@ def download(selected_id: list, part: socket.socket,peers : dict, peer_info : di
         return [True,part]
         
     except (ConnectionRefusedError, ConnectionAbortedError) as e:
-        raise e 
         return [False, part]
     return [False, part]
     
@@ -523,7 +528,6 @@ def send_file(file_parts_paths: str, peer: socket.socket):
                     break
                 peer.send(chunk)
     except (ConnectionResetError) as e:
-        raise e 
         return [False, file_parts_paths[1], peer]
     return [True, file_parts_paths[1], peer]
 
