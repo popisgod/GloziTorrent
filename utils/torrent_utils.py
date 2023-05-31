@@ -37,6 +37,16 @@ def divide_into_parts(file_path: str, N: int):
 
     return chunks
 
+def divide_to_chunks(file_path : str, ) -> None:
+    '''
+    
+    '''
+    
+    file_size = os.path.getsize(file_path)
+    
+
+
+
 # -> list[list[(int,bin)]]
 def divide_to_computers(file_path: str, N: int, M: int):
     '''
