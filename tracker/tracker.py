@@ -1,16 +1,22 @@
-from fastapi import FastAPI, status
-from classy_fastapi import Routable, get, post
-import uvicorn
-from tracker_dao import Dao, TrackerRequest, TrackerFile
-from fastapi.testclient import TestClient
-from typing import List, Union
-from pydantic import BaseModel
+from fastapi import FastAPI, Depends
+from classy_fastapi import Routable, get
+from tracker_dao import Dao, Peer, MongoClient
+from typing import Annotated, List
 
 
-class TrackerResponse(BaseModel):
-    TrackerFiles : List[TrackerFile]
 
 
+class TrackerRequestAnnounce:
+    def __init__(self, info_hash : str, peer_id : str, ip : str, port : int
+                 , uploaded : str, downloaded : str, left : str, event : str ) -> None:
+        self.info_hash = info_hash
+        self.peer = Peer(peer_id=peer_id,
+                         ip=ip,
+                         port=port,
+                         downloaded=downloaded,
+                         uploaded=uploaded,
+                         left=left,
+                         event=event)
 
 class Tracker(Routable):
     def __init__(self, dao : Dao) -> None:
@@ -22,17 +28,19 @@ class Tracker(Routable):
     async def root(self) -> str:
         return {'tracker_id' : self.tracker_id}
     
-    @get('/annouce')
-    async def annouce(self, tracker_request : TrackerRequest) -> TrackerResponse:
-        return self.__dao.update_tracker_file(tracker_request.info_hash, tracker_request.peer)
+    @get('/announce/')
+    async def announce(self, tracker_request_announce :  Annotated[TrackerRequestAnnounce, Depends(TrackerRequestAnnounce)]) -> List[Peer]:
+        return self.__dao.update_tracker_files(tracker_request_announce.info_hash, tracker_request_announce.peer)
 
-    @post('/register',status_code=status.HTTP_201_CREATED)
-    async def register(self, tracker_request : TrackerRequest) -> TrackerResponse:
-        return self.__dao.add_tracker_file(tracker_request.info_hash, tracker_request.peer)
+    # deprecated method 
+    # @post('/register/',status_code=status.HTTP_201_CREATED)
+    # async def register(self, tracker_request : TrackerRequestRegister) -> TrackerResponse:
+    #     return self.__dao.add_tracker_file(tracker_request.info_hash, tracker_request.peer)
 
 def main():
-    # Configure the DAO 
-    dao = Dao()
+    # Configure the DAO and database
+    client = MongoClient("mongodb://localhost:27017/")  
+    dao = Dao(dbconnection=client)
 
     # create the tracker server 
     tracker = Tracker(dao)
