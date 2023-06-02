@@ -1,9 +1,7 @@
 from fastapi import FastAPI, Depends
 from classy_fastapi import Routable, get
 from tracker_dao import Dao, Peer, MongoClient
-from typing import Annotated, List
-
-
+from typing import Annotated, List, AnyStr
 
 
 class TrackerRequestAnnounce:
@@ -26,20 +24,15 @@ class Tracker(Routable):
     
     @get('/')
     async def root(self) -> str:
-        return {'tracker_id' : self.tracker_id}
+        return {'tracker_id' : self.tracker_id} # type: ignore
     
     @get('/announce/')
     async def announce(self, tracker_request_announce :  Annotated[TrackerRequestAnnounce, Depends(TrackerRequestAnnounce)]) -> List[Peer]:
         return self.__dao.update_tracker_files(tracker_request_announce.info_hash, tracker_request_announce.peer)
 
-    # deprecated method 
-    # @post('/register/',status_code=status.HTTP_201_CREATED)
-    # async def register(self, tracker_request : TrackerRequestRegister) -> TrackerResponse:
-    #     return self.__dao.add_tracker_file(tracker_request.info_hash, tracker_request.peer)
-
 def main():
     # Configure the DAO and database
-    client = MongoClient("mongodb://localhost:27017/")  
+    client = MongoClient("localhost", 27017)  
     dao = Dao(dbconnection=client)
 
     # create the tracker server 
