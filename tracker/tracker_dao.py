@@ -1,16 +1,17 @@
 from __future__ import annotations
 from typing import List, Dict, Any, Literal, Annotated, Union
-from pydantic import BaseModel, validator, root_validator
+from pydantic import BaseModel
 from fastapi import Depends
 import logging
 from pymongo import MongoClient
 import jwt
-from itsdangerous import TimestampSigner, URLSafeTimedSerializer as Serializer
-from itsdangerous.exc import BadSignature, SignatureExpired
+from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
 import config 
 from passlib.context import CryptContext
-from datetime import datetime, timedelta
+import datetime
 
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class Peer(BaseModel):
     peer_id: str
@@ -21,10 +22,6 @@ class Peer(BaseModel):
     left: str
     event: Literal['','started','completed','stopped']
 
-
-class Token(BaseModel):
-    token: str  
-    expiration_time : int = 3600 
 
 class TrackerFile(BaseModel):
     info_hash : str
@@ -46,7 +43,7 @@ class TrackerFile(BaseModel):
 
 
 
-class Dao:
+class TrackerDao:
     def __init__(self, dbconnection : MongoClient, password : str) -> None:
         """_summary_
 
@@ -54,13 +51,15 @@ class Dao:
             dbconnection (MongoClient): _description_
             password (str): _description_
         """
-        self.dbconnection = dbconnection['tracker']
-        self.tracker_files_table =  self.dbconnection['tracker_files']
-        self.authentication_table = self.dbconnection['authentication']
+        self.mongo_client = dbconnection
+        self.database = self.mongo_client['tracker']
+        self.tracker_files_table =  self.database['tracker_files']
+        self.authentication_table = self.database['authentication']
         
     def update_tracker_files(self, info_hash : str, 
-                             peer : Annotated[Peer | dict, Depends(Peer)], #TODO: why doesn't it enforce conversion????
-                             compact_mode : bool, no_peer_id : bool, 
+                             peer : Annotated[Peer, Depends(Peer)], 
+                             compact_mode : bool, 
+                             no_peer_id : bool, 
                              numwant : int | None,
                              ) -> List[Peer]:
         """updates the tracker files or creates a new file per peer requets.
@@ -72,8 +71,7 @@ class Dao:
         Returns:
             List[Peer]: a list of all peers taking part in the .torrent file by info_hash
         """
-        if isinstance(peer,dict): #TODO: fix this buggg, it doesn't enfore type and passes it as a dict 
-            peer = Peer(**peer)
+
         
         info_hash_query = {'info_hash' : info_hash}
         result = self.tracker_files_table.find_one(info_hash_query)
@@ -119,13 +117,14 @@ class Dao:
         Returns:
             Dict[str, str] | None: an authentication token 
         """
-        authenticate_hash_query = {'hashed_password' : hash_password(password), 'username' : username, 'scope' : 'admin'}
+        authenticate_hash_query = {'username' : username, 'scope' : 'admin'}
         result = self.authentication_table.find_one(authenticate_hash_query)
         if result: 
-            return {"access_token": self.generate_token('admin', ip), "token_type": "bearer"}
+            if verify_password(password ,result['hashed_password']):
+                return {"access_token": self.generate_token('admin', ip, config.ACCESS_TOKEN_EXPIRE_SECONDS), "token_type": "Bearer"}
+        return None
         
-        
-    def generate_token(self, scope : str, ip : str) -> str: 
+    def generate_token(self, scope : str, ip : str, expiration : int = config.ACCESS_TOKEN_EXPIRE_SECONDS) -> str: 
         """ generates an authentication token for the specified scope with a time limit 
 
         Args:
@@ -135,9 +134,17 @@ class Dao:
         Returns:
             str: _description_
         """
-        serializer = Serializer(config.SECRET_KEY)
-        token = serializer.dumps({'ip' : ip, 'scope' : scope}) # could be based on peer id and not ip but not crucial  
-        return str(token)
+        data = {
+            'ip' : ip,
+            'scope' : scope,
+            'exp' : datetime.datetime.now()
+                       + datetime.timedelta(seconds=expiration)
+
+        }
+        token = jwt.encode(payload=data, 
+                           key=config.SECRET_KEY, 
+                           algorithm="HS256")
+        return token
     
     def authenticate_token(self, token : str, scope : str, ip : str) -> Literal["TOKEN_EXPIRED", "BAD_TOKEN","TOKEN_VALID"]: 
         """authenticate received token 
@@ -148,17 +155,21 @@ class Dao:
         Returns:
             bool: _description_
         """     
-        serializer = Serializer(config.SECRET_KEY)
         
         try: 
-            data = serializer.loads(token, max_age=3600)
+            data = jwt.decode(token,
+                              key=config.SECRET_KEY,
+                              leeway=datetime.timedelta(seconds=10), 
+                              algorithms=["HS256"])
+
             if data['ip'] == ip:
                 if data['scope'] == scope:
                     return "TOKEN_VALID"
+                
             return "BAD_TOKEN"
-        except SignatureExpired:
+        except ExpiredSignatureError:
             return "TOKEN_EXPIRED"
-        except BadSignature:
+        except InvalidTokenError:
             return "BAD_TOKEN"
     
     def create_user(self, username : str, password : str, scope : str) -> None:
@@ -169,10 +180,13 @@ class Dao:
             password (str): the password of the user 
             scope (str): the scope of the newly created user 
         """
-        authentication_hash_query = {'hashed_password' : hash_password(password), 'username' : username, 'scope' : scope}
+        authentication_hash_query = {'hashed_password' : hash_password(password), 
+                                     'username' : username,
+                                     'scope' : scope}
         self.authentication_table.insert_one(authentication_hash_query)
 
-def hash_password(password : str) -> str: #TODO: use pwd_context
+
+def hash_password(password : str) -> str: 
     """ takes in a password and returns the hashed password 
 
     Args:
@@ -181,19 +195,22 @@ def hash_password(password : str) -> str: #TODO: use pwd_context
     Returns:
         str: the hashed password 
     """
-    payload = {'password' : password} 
-    hash = jwt.encode(payload, config.SECRET_KEY, algorithm='HS256')
-    return hash 
+    return pwd_context.hash(password)
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, config.SECRET_KEY, algorithm=config.ALGORITHM)
-    return encoded_jwt
+def verify_password(password_to_verify : str, hashed_password : str) -> bool:
+    """_summary_
+
+    Args:
+        password_to_verify (str): _description_
+        hashed_password (str): _description_
+
+    Returns:
+        bool: _description_
+    """
+    return pwd_context.verify(password_to_verify, hashed_password)
+
+
+
 
 
 

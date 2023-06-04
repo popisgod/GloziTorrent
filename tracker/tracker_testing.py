@@ -43,11 +43,19 @@ def test_announce_all():
     assert response.json()[0]['info_hash'] == 'hash121' 
     
 def test_admin_login():
-    credentials = {'username' : 'popisgod', 'password' : '1234'} 
+    credentials = {'username' : 'popisgod1', 'password' : '12346'} 
     response = client.post("/admin/login", data=credentials,
                            headers={"content-type": "application/x-www-form-urlencoded"})
 
     assert response.status_code == 200
+    token = response.json()
+    
+    client.headers['Authorization'] = f"{token['token_type']} {token['access_token']}"
+    response = client.get('/admin/')
+    
+    assert response.status_code == 200
+    assert response.json() ==  {'token_status' : 'TOKEN_VALID'}
+
     
     
 def test_announce_bad_json_payload():

@@ -1,12 +1,28 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from classy_fastapi import Routable, get, post
-from tracker_dao import Dao, Peer, TrackerFile, MongoClient
-from pydantic import validator, BaseModel
+from pymongo import MongoClient
+from pydantic import BaseModel
 from typing import Annotated, List, Dict
+from classy_fastapi import Routable, get, post
+from tracker_dao import TrackerDao, Peer, TrackerFile
 import uvicorn
 
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
+class ExtraAnnounceOptions(BaseModel): 
+    """_summary_
+
+    Args:
+        BaseModel (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    compact_mode : bool = False
+    no_peer_id : bool = False
+    numwant : int | None = None
 
 
 class TrackerRequestAnnounce(BaseModel):
@@ -16,14 +32,10 @@ class TrackerRequestAnnounce(BaseModel):
         BaseModel (_type_): _description_
     """
     info_hash : str
-    peer : Annotated[Peer, Depends(Peer)]
-    compact_mode : bool = False
-    no_peer_id : bool = False
-    numwant : int | None = None
+    peer : Annotated[Peer, Depends()]
+    options : Annotated[ExtraAnnounceOptions, Depends()]
 
 
-    
-    
 class Tracker(Routable):
     """_summary_
 
@@ -33,7 +45,7 @@ class Tracker(Routable):
     
     def __init__(self, dao : Dao) -> None:
         super().__init__()
-        self.__dao : Dao = dao
+        self._dao : Dao = dao
         self.tracker_id = 'placeholder'
     
     @get('/')
@@ -42,28 +54,29 @@ class Tracker(Routable):
     
     @get('/announce/')
     async def announce(self, tracker_request_announce :  Annotated[TrackerRequestAnnounce, Depends(TrackerRequestAnnounce)]) -> List[Peer]:
-        return self.__dao.update_tracker_files(**tracker_request_announce.dict())
+        return self._dao.update_tracker_files(info_hash=tracker_request_announce.info_hash, 
+                                               peer=tracker_request_announce.peer, 
+                                               **tracker_request_announce.options.dict())
 
     @get('/scrape/')
     async def scrape(self) -> List[TrackerFile]:
-        return self.__dao.get_all_tracker_files()
+        return self._dao.get_all_tracker_files()
     
     @post('/admin/login')
     async def login(self, form_data : Annotated[OAuth2PasswordRequestForm, Depends()], request : Request) -> Dict[str, str]:
         # authenticate the password and get the 
         if request.client:
-            auth = self.__dao.login_admin(form_data.username, form_data.password, request.client.host)
+            auth = self._dao.login_admin(form_data.username, form_data.password, request.client.host)
             if auth:
                 return auth
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Incorrect username or password')
         else: 
            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Client information is missing')       
     
-    
     @get('/admin/')
     async def get_admin_page(self, token : Annotated[str, Depends(oauth2_scheme)], request : Request) -> Dict[str,str]:
         if request.client is not None:
-            auth_status = self.__dao.authenticate_token(token, 'admin', request.client.host)
+            auth_status = self._dao.authenticate_token(token, 'admin', request.client.host)
 
             if auth_status == 'TOKEN_VALID':
                 return {'token_status' : auth_status}
@@ -82,13 +95,15 @@ class Tracker(Routable):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='authentication process failed')
         else: 
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Client information is missing')
-                
+
+
+
 
 def main():
     # Configure the DAO and database
     client = MongoClient("localhost", 27017)  
-    dao = Dao(dbconnection=client, password='helloworld')
-    #dao.create_user('popisgod','1234','admin')
+    dao = TrackerDao(dbconnection=client, password='helloworld')
+    dao.create_user('popisgod1','12346','admin')
     
     # create the tracker server 
     tracker = Tracker(dao)
