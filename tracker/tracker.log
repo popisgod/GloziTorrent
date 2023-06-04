@@ -1,2 +1,0 @@
-01-Jun-23 01:09:28 - peer peer1233 has announced of a new tracker file hash121
-01-Jun-23 01:09:28 - HTTP Request: GET http://testserver/announce/?info_hash=hash121&peer_id=peer1233&ip=127.0.0.1&port=8040&downloaded=0&uploaded=502&left=2100&event=started "HTTP/1.1 200 OK"
