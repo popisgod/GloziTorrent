@@ -1,9 +1,8 @@
 from fastapi.testclient import TestClient
-from tracker import Peer, main as app # type: ignore
 from fastapi import status
-import json
+from .trackerAPI import main as app 
 from typing import List
-import pytest
+from .trackerAPI_dependencies import Peer
 
 
 client = TestClient(app())
@@ -71,3 +70,4 @@ def test_read_item_bad_token():
     response = client.get("/items/foo", headers={"X-Token": "hailhydra"})
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
+test_announce()
