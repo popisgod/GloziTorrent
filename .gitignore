@@ -1,4 +1,4 @@
 /tracker/tracker_db/*
-__pychace__
-.vscode 
+__pycache__
+.vscode
 .pytest_cache 
