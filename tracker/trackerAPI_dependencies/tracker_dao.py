@@ -4,15 +4,29 @@ import logging
 from trackerAPI_dependencies import config 
 import jwt
 from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
-from typing import List, Dict, Any, Literal, Annotated, Union, Iterable
+from typing import List, Dict, Any, Literal, Annotated, Union, Iterable, Optional
 from pydantic import BaseModel
 from fastapi import Depends
 from pymongo import MongoClient
 from passlib.context import CryptContext
 
-
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class AdminUser(BaseModel):
+    ip : str
+    username : str
+
+
+class ActiveUser(BaseModel):
+    ip : str
+    update : datetime.datetime 
+    
+class Auth(BaseModel):
+    user : AdminUser | None
+    message : Literal["TOKEN_VALID","TOKEN_EXPIRED","BAD_TOKEN"]
+    scopes : List[str] | None
+
 
 class Peer(BaseModel):
     peer_id: str
@@ -43,7 +57,6 @@ class TrackerFile(BaseModel):
         } 
 
 
-
 class TrackerDao:
     def __init__(self, dbconnection : MongoClient) -> None:
         """_summary_
@@ -57,6 +70,7 @@ class TrackerDao:
         self.tracker_files_table =  self.database['tracker_files']
         self.authentication_table = self.database['authentication']
         self.refresh_tokens = {}
+        self.active_users : Dict[str, ActiveUser] = {}
         
     def update_tracker_files(self, info_hash : str, 
                              peer : Annotated[Peer, Depends(Peer)], 
@@ -73,7 +87,9 @@ class TrackerDao:
         Returns:
             List[Peer]: a list of all peers taking part in the .torrent file by info_hash
         """
-
+        active_uesr = ActiveUser(ip=peer.ip,update=datetime.datetime.now())
+        self.active_users[peer.peer_id] = active_uesr
+            
         
         info_hash_query = {'info_hash' : info_hash}
         result = self.tracker_files_table.find_one(info_hash_query)
@@ -98,6 +114,9 @@ class TrackerDao:
             self.tracker_files_table.insert_one(new_file.to_dict())
             logging.info(f'peer {peer.peer_id} has announced of a new tracker file {info_hash}')
             return [peer,]
+        
+    def get_all_active_users(self) -> Dict[str, ActiveUser]:
+        return self.active_users
     
     def get_all_tracker_files(self) -> List[TrackerFile]:
         """returns all of the tracker files
@@ -109,7 +128,7 @@ class TrackerDao:
         logging.info(result)
         return [TrackerFile.from_dict(tracker_file) for tracker_file in result]
     
-    def login(self, username : str, password : str, scopes : List[str], ip : str) -> Dict[str, str] | None:
+    def login(self, username : str, password : str, scopes : List[str], ip : str) -> Dict[str, Any] | None:
         """checks if the username and password are valid and generates a temporary token
 
         Args:
@@ -124,9 +143,11 @@ class TrackerDao:
         result = self.authentication_table.find_one(authenticate_hash_query)
         if result: 
             if verify_password(password ,result['hashed_password']):
-                data = {'ip' : ip, 'aud' : ['refresh',]}
-                refresh_token = self.generate_token(data, scopes, config.ACCESS_TOKEN_EXPIRE_SECONDS*2)
-                data = {'ip' : ip, 'aud' : ['access',]}
+                data = {'ip' : ip, 'aud' : ['refresh',], 'username' : username}
+                refresh_token = self.generate_token(data, scopes, config.ACCESS_TOKEN_EXPIRE_SECONDS*4)
+                self.refresh_tokens[ip] = refresh_token
+                
+                data = {'ip' : ip, 'aud' : ['access',], 'username' : username}
                 access_token = self.generate_token(data ,scopes, config.ACCESS_TOKEN_EXPIRE_SECONDS)
                 
                 return {"access_token": access_token,
@@ -156,7 +177,7 @@ class TrackerDao:
                            algorithm="HS256")
         return token
     
-    def authenticate_token(self, token : str, scopes : List[str], ip : str, aud : str | Iterable[str] = "access") -> Literal["TOKEN_EXPIRED", "BAD_TOKEN","TOKEN_VALID"]: 
+    def authenticate_token(self, token : str, ip : str, aud : str | Iterable[str] = "access") -> Auth: 
         """authenticate received token 
 
         Args:
@@ -174,15 +195,14 @@ class TrackerDao:
                               audience=aud)
 
             if data['ip'] == ip:
-                if data['scopes'] == scopes:
-                    return "TOKEN_VALID"
-            return "BAD_TOKEN"
+                return Auth(message="TOKEN_VALID",user=AdminUser(ip=data['ip'], username=data['username']),scopes=data['scopes'])
+            return Auth(message="BAD_TOKEN",user=None,scopes=None)
         except ExpiredSignatureError:
-            return "TOKEN_EXPIRED"
+            return Auth(message="TOKEN_EXPIRED",user=None,scopes=None)
         except jwt.InvalidAudienceError:
-            return "BAD_TOKEN"
+            return Auth(message="BAD_TOKEN",user=None,scopes=None)
         except InvalidTokenError:
-            return "BAD_TOKEN"
+            return Auth(message="BAD_TOKEN",user=None,scopes=None)
     
     def create_user(self, username : str, password : str, scopes : List[str]) -> None:
         """creates a new admin user and sets its username and password
@@ -198,7 +218,6 @@ class TrackerDao:
         self.authentication_table.insert_one(authentication_hash_query)
 
 
-
 def hash_password(password : str) -> str: 
     """ takes in a password and returns the hashed password 
 
@@ -209,6 +228,7 @@ def hash_password(password : str) -> str:
         str: the hashed password 
     """
     return pwd_context.hash(password)
+
 
 def verify_password(password_to_verify : str, hashed_password : str) -> bool:
     """_summary_
@@ -221,10 +241,6 @@ def verify_password(password_to_verify : str, hashed_password : str) -> bool:
         bool: _description_
     """
     return pwd_context.verify(password_to_verify, hashed_password)
-
-
-
-
 
 
 if __name__=='__main__':

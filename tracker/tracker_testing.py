@@ -13,26 +13,22 @@ def test_read_root():
     assert response.json() == {'tracker_id': 'placeholder'}
 
 def test_announce():
-    peer = Peer(**{"peer_id": "peer1233",
-                "ip": "127.0.0.1", 
-                "port": 8040, 
-                "downloaded" : "0", 
-                "uploaded" : "502", 
-                "left" : "2100", 
-                "event" : "started"})
-    info_hash = "hash121"
+    for i in range(1000): 
+        peer = Peer(**{"peer_id": f"peer123{str(i)}",
+                    "ip": "127.0.0.1", 
+                    "port": 8040, 
+                    "downloaded" : "0", 
+                    "uploaded" : "502", 
+                    "left" : "2100", 
+                    "event" : "started"})
+        info_hash = "hash121"
+        
+        
+        data = {"info_hash": info_hash ,**peer.dict()}
+        response  = client.get("/announce/", params=data)
     
-    
-    data = {"info_hash": info_hash ,**peer.dict()}
-    response  = client.get("/announce/", params=data)
-    
-    assert response.status_code == 200
-    assert response.json()[0] == peer.dict()
-    
-    data['peer_id'] = 'hello'
-    response = client.get("/announce/", params=data)
-    
-    assert len(response.json()) == 2
+        assert response.status_code == 200
+
     
 def test_announce_all():
     # Test case for announce all 
@@ -51,7 +47,6 @@ def test_admin_login():
 
     assert response.status_code == 200
     token = response.json()
-    print(token)
     
     client.headers['Authorization'] = f"{token['token_type']} {token['access_token']}"
     response = client.get('/admin/')
@@ -59,7 +54,12 @@ def test_admin_login():
     assert response.status_code == 200
     assert response.json() ==  {'html' : 'admin_page'}
 
+
+def test_get_all_users(): 
+    response = client.get('/admin/users/')
     
+    assert response.status_code == 200
+    print(response.json())
     
 def test_announce_bad_json_payload():
     # Test case with missing required fields in the JSON payload

@@ -1,19 +1,28 @@
 import logging
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Security
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Annotated, List, Dict, Callable
 from classy_fastapi import Routable, get, post
-from trackerAPI_dependencies.tracker_dao import TrackerDao, Peer, TrackerFile
+from trackerAPI_dependencies.tracker_dao import TrackerDao, Peer, TrackerFile, ActiveUser, AdminUser
 from pymongo import MongoClient
-
+from starlette.authentication import requires
+from starlette.authentication import AuthCredentials, AuthenticationError
+from starlette.requests import HTTPConnection
+from starlette.middleware.authentication import AuthenticationMiddleware
 
 # logging configuration 
-logging.basicConfig(filename='tracker.log', level=logging.INFO, filemode='w', format='%(asctime)s - %(message)s',datefmt='%d-%b-%y %H:%M:%S')
+logging.basicConfig(filename='tracker.log', 
+                    level=logging.INFO, 
+                    filemode='w', 
+                    format='%(asctime)s - %(message)s',
+                    datefmt='%d-%b-%y %H:%M:%S')
 
 # authentication scheme 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", scopes={"admin" : "administrative rights"})
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", 
+                                     scopes={"admin" : "administrative rights",
+                                            "user" : "basic rights"})
 
 
 class ExtraAnnounceOptions(BaseModel): 
@@ -30,9 +39,6 @@ class ExtraAnnounceOptions(BaseModel):
     numwant : int | None = None
 
 
-
-
-    
 class TrackerRequestAnnounce(BaseModel):
     """_summary_
 
@@ -50,31 +56,33 @@ class Tracker(Routable):
     Args:
         Routable (_type_): _description_
     """
-    
     def __init__(self, dao : TrackerDao) -> None:
         super().__init__()
         self._dao : TrackerDao = dao
         self.tracker_id = 'placeholder'
     
-    
-    def authenticate(self, security_scopes : list[str], 
-                     token : Annotated[str, Depends(oauth2_scheme)], 
-                     request : Request) -> dict[str, str]: 
-        if request.client is not None:
-            auth_status = self._dao.authenticate_token(token, 
-                                                       security_scopes, 
-                                                       request.client.host, 
+    async def authenticate(self, conn : HTTPConnection) -> tuple[AuthCredentials, AdminUser] | None:
+        auth_token = conn.headers.get("Authorization", None)
+        if auth_token is None:
+            return 
+        
+        if conn.client is not None:
+            scheme, auth_token  = auth_token.split()
+            auth = self._dao.authenticate_token(auth_token, 
+                                                       conn.client.host, 
                                                        "access")
-
-            if auth_status == 'TOKEN_VALID':
-                return {'token_status' : auth_status}
-            elif auth_status == 'TOKEN_EXPIRED':
+            
+            
+            if auth.message == 'TOKEN_VALID':
+                if auth.scopes is not None and auth.user is not None: 
+                    return AuthCredentials(auth.scopes), auth.user
+            elif auth.message == 'TOKEN_EXPIRED':
                         raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has expired",
                 headers={"WWW-Authenticate": "Bearer"},
                         )
-            elif auth_status == 'BAD_TOKEN':
+            elif auth.message == 'BAD_TOKEN':
                         raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
@@ -112,56 +120,32 @@ class Tracker(Routable):
            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Client information is missing')       
     
     @get('/admin/')
-    async def get_admin_page(self, token : Annotated[str, Depends(oauth2_scheme)], 
-                             request : Request) -> Dict[str,str] | None:
-        auth = self.authenticate(['admin',], token, request) 
-        
-        if auth == {'token_status' : 'TOKEN_VALID'}:
-            return {'html' : 'admin_page'}
-    
-    
-def authenticate(dao : TrackerDao, security_scopes : SecurityScopes, 
-                    token : Annotated[str, Depends(oauth2_scheme)], 
-                    request : Request) -> dict[str, str]: 
-    if request.client is not None:
-        auth_status = dao.authenticate_token(token, 
-                                            security_scopes.scopes, 
-                                            request.client.host, 
-                                            "access")
+    @requires(scopes=['admin'])
+    async def get_admin_page(self, request : Request) -> Dict[str,str] | None:
+        return {'html' : 'admin_page'}
 
-        if auth_status == 'TOKEN_VALID':
-            return {'token_status' : auth_status}
-        elif auth_status == 'TOKEN_EXPIRED':
-                    raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
-            headers={"WWW-Authenticate": "Bearer"},
-                    )
-        elif auth_status == 'BAD_TOKEN':
-                    raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='authentication process failed')
-    else: 
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Client information is missing')
+    @get('/admin/users/')
+    @requires(scopes=['admin'])
+    async def get_users(self, request : Request) -> Dict[str,ActiveUser] | None:
+        return self._dao.get_all_active_users()
 
+    
 def main():
     # Configure the DAO and database
     client = MongoClient("localhost", 27017)  
     dao = TrackerDao(dbconnection=client)
-    dao.create_user('popisgod12','123346',['admin',])
+    dao.create_user('popisgod12','123346',['admin','user'])
     
             
     # create the tracker server 
     tracker = Tracker(dao)
     
-    app = FastAPI()
+    TrackerAPI = FastAPI()
     # router memeber inherited from cr.Routable and configured per the annotations.
-    app.include_router(tracker.router)
+    TrackerAPI.include_router(tracker.router)
+    TrackerAPI.add_middleware(AuthenticationMiddleware, backend=tracker)
     
-    return app 
+    return TrackerAPI 
 
 if __name__=='__main__':
         uvicorn.run("trackerAPI:main", port=5000, log_level="info", factory=True, )
