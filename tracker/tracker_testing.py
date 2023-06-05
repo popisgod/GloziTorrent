@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 from fastapi import status
-from .trackerAPI import main as app 
+from trackerAPI import main as app 
 from typing import List
-from .trackerAPI_dependencies import Peer
+from trackerAPI_dependencies.tracker_dao import Peer
 
 
 client = TestClient(app())
@@ -42,18 +42,22 @@ def test_announce_all():
     assert response.json()[0]['info_hash'] == 'hash121' 
     
 def test_admin_login():
-    credentials = {'username' : 'popisgod1', 'password' : '12346'} 
-    response = client.post("/admin/login", data=credentials,
+    credentials = {'username' : 'popisgod12', 
+                   'password' : '123346', 
+                   'scope' : ['admin'],
+                   'grand_type' : 'password'} 
+    response = client.post("/token", data=credentials,
                            headers={"content-type": "application/x-www-form-urlencoded"})
 
     assert response.status_code == 200
     token = response.json()
+    print(token)
     
     client.headers['Authorization'] = f"{token['token_type']} {token['access_token']}"
     response = client.get('/admin/')
     
     assert response.status_code == 200
-    assert response.json() ==  {'token_status' : 'TOKEN_VALID'}
+    assert response.json() ==  {'html' : 'admin_page'}
 
     
     

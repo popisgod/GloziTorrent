@@ -1,10 +1,10 @@
 from __future__ import annotations
 import datetime
 import logging
-from . import config
+from trackerAPI_dependencies import config 
 import jwt
 from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
-from typing import List, Dict, Any, Literal, Annotated, Union
+from typing import List, Dict, Any, Literal, Annotated, Union, Iterable
 from pydantic import BaseModel
 from fastapi import Depends
 from pymongo import MongoClient
@@ -56,6 +56,7 @@ class TrackerDao:
         self.database = self.mongo_client['tracker']
         self.tracker_files_table =  self.database['tracker_files']
         self.authentication_table = self.database['authentication']
+        self.refresh_tokens = {}
         
     def update_tracker_files(self, info_hash : str, 
                              peer : Annotated[Peer, Depends(Peer)], 
@@ -105,10 +106,10 @@ class TrackerDao:
             List[TrackerFile]: a list of all of the tracker files stored on the database 
         """
         result: List[Dict[str, Any]] = list(self.tracker_files_table.find())
-        logging.warning(result)
+        logging.info(result)
         return [TrackerFile.from_dict(tracker_file) for tracker_file in result]
     
-    def login_admin(self, username : str, password : str, ip : str) -> Dict[str, str] | None:
+    def login(self, username : str, password : str, scopes : List[str], ip : str) -> Dict[str, str] | None:
         """checks if the username and password are valid and generates a temporary token
 
         Args:
@@ -118,14 +119,22 @@ class TrackerDao:
         Returns:
             Dict[str, str] | None: an authentication token 
         """
-        authenticate_hash_query = {'username' : username, 'scope' : 'admin'}
+        
+        authenticate_hash_query = {'username' : username, 'scopes' : scopes}
         result = self.authentication_table.find_one(authenticate_hash_query)
         if result: 
             if verify_password(password ,result['hashed_password']):
-                return {"access_token": self.generate_token('admin', ip, config.ACCESS_TOKEN_EXPIRE_SECONDS), "token_type": "Bearer"}
+                data = {'ip' : ip, 'aud' : ['refresh',]}
+                refresh_token = self.generate_token(data, scopes, config.ACCESS_TOKEN_EXPIRE_SECONDS*2)
+                data = {'ip' : ip, 'aud' : ['access',]}
+                access_token = self.generate_token(data ,scopes, config.ACCESS_TOKEN_EXPIRE_SECONDS)
+                
+                return {"access_token": access_token,
+                        "refresh_token" : refresh_token,
+                        "token_type": "Bearer"}
         return None
         
-    def generate_token(self, scope : str, ip : str, expiration : int = config.ACCESS_TOKEN_EXPIRE_SECONDS) -> str: 
+    def generate_token(self, data : dict[str,str], scopes : List[str], expiration : int = config.ACCESS_TOKEN_EXPIRE_SECONDS) -> str: 
         """ generates an authentication token for the specified scope with a time limit 
 
         Args:
@@ -135,19 +144,19 @@ class TrackerDao:
         Returns:
             str: _description_
         """
-        data = {
-            'ip' : ip,
-            'scope' : scope,
+        payload : Dict[str, Any] = {
+            **data,
+            'scopes' : scopes,
             'exp' : datetime.datetime.now()
                        + datetime.timedelta(seconds=expiration)
 
         }
-        token = jwt.encode(payload=data, 
+        token = jwt.encode(payload=payload, 
                            key=config.SECRET_KEY, 
                            algorithm="HS256")
         return token
     
-    def authenticate_token(self, token : str, scope : str, ip : str) -> Literal["TOKEN_EXPIRED", "BAD_TOKEN","TOKEN_VALID"]: 
+    def authenticate_token(self, token : str, scopes : List[str], ip : str, aud : str | Iterable[str] = "access") -> Literal["TOKEN_EXPIRED", "BAD_TOKEN","TOKEN_VALID"]: 
         """authenticate received token 
 
         Args:
@@ -161,29 +170,31 @@ class TrackerDao:
             data = jwt.decode(token,
                               key=config.SECRET_KEY,
                               leeway=datetime.timedelta(seconds=10), 
-                              algorithms=["HS256"])
+                              algorithms=["HS256"],
+                              audience=aud)
 
             if data['ip'] == ip:
-                if data['scope'] == scope:
+                if data['scopes'] == scopes:
                     return "TOKEN_VALID"
-                
             return "BAD_TOKEN"
         except ExpiredSignatureError:
             return "TOKEN_EXPIRED"
+        except jwt.InvalidAudienceError:
+            return "BAD_TOKEN"
         except InvalidTokenError:
             return "BAD_TOKEN"
     
-    def create_user(self, username : str, password : str, scope : str) -> None:
+    def create_user(self, username : str, password : str, scopes : List[str]) -> None:
         """creates a new admin user and sets its username and password
 
         Args:
             username (str): the username of the admin
             password (str): the password of the user 
-            scope (str): the scope of the newly created user 
+            scope (List[str]): the scopes of the newly created user 
         """
         authentication_hash_query = {'hashed_password' : hash_password(password), 
                                      'username' : username,
-                                     'scope' : scope}
+                                     'scopes' : scopes}
         self.authentication_table.insert_one(authentication_hash_query)
 
 
