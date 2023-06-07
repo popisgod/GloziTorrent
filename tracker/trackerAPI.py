@@ -1,3 +1,4 @@
+import re
 import logging
 import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, status, Request
@@ -11,6 +12,7 @@ from starlette.authentication import requires
 from starlette.authentication import AuthCredentials, AuthenticationError
 from starlette.requests import HTTPConnection
 from starlette.middleware.authentication import AuthenticationMiddleware
+
 
 # logging configuration 
 logging.basicConfig(filename='tracker.log', 
@@ -49,8 +51,7 @@ class TrackerRequestAnnounce(BaseModel):
     peer : Annotated[Peer, Depends()]
     options : Annotated[ExtraAnnounceOptions, Depends()]
 
-
-class Tracker(Routable):
+class TrackerAPI(Routable):
     """_summary_
 
     Args:
@@ -60,6 +61,8 @@ class Tracker(Routable):
         super().__init__()
         self._dao : TrackerDao = dao
         self.tracker_id = 'placeholder'
+        self.blacklisted : List[str] = []
+
     
     async def authenticate(self, conn : HTTPConnection) -> tuple[AuthCredentials, AdminUser] | None:
         auth_token = conn.headers.get("Authorization", None)
@@ -67,6 +70,9 @@ class Tracker(Routable):
             return 
         
         if conn.client is not None:
+            if conn.client.host in self.blacklisted:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='client is banned')
+            
             scheme, auth_token  = auth_token.split()
             auth = self._dao.authenticate_token(auth_token, 
                                                        conn.client.host, 
@@ -129,6 +135,19 @@ class Tracker(Routable):
     async def get_users(self, request : Request) -> Dict[str,ActiveUser] | None:
         return self._dao.get_all_active_users()
 
+    @post('/admin/blacklist')
+    @requires(scopes=['admin'])
+    async def blacklist(self, ips : list[str]) -> Dict[str,List[str]]:
+        ip_pattern = r'^((([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\.){3})([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])$'
+        for ip in ips:
+            if re.match(ip_pattern, ip):
+                self.blacklisted.append(ip)
+        return {'blacklisted' : self.blacklisted}
+    
+    @get('/admin/blacklist/')
+    @requires(scopes=['admin'])
+    async def get_blacklist(self) -> Dict[str,List[str]]:
+        return {'blacklisted' : self.blacklisted}
     
 def main():
     # Configure the DAO and database
@@ -138,12 +157,13 @@ def main():
     
             
     # create the tracker server 
-    tracker = Tracker(dao)
+    trackerAPI = TrackerAPI(dao)
     
-    TrackerAPI = FastAPI()
+    TrackerAPP = FastAPI()
     # router memeber inherited from cr.Routable and configured per the annotations.
-    TrackerAPI.include_router(tracker.router)
-    TrackerAPI.add_middleware(AuthenticationMiddleware, backend=tracker)
+    TrackerAPP.include_router(trackerAPI.router)
+    TrackerAPP.add_middleware(AuthenticationMiddleware, backend=trackerAPI)
+    
     
     return TrackerAPI 
 
