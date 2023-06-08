@@ -1,11 +1,13 @@
 import re
 import logging
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Annotated, List, Dict, Callable
+from typing import Annotated, List, Dict
 from classy_fastapi import Routable, get, post
+import trackerAPI_dependencies.config as config 
 from trackerAPI_dependencies.tracker_dao import TrackerDao, Peer, TrackerFile, ActiveUser, AdminUser
 from pymongo import MongoClient
 from starlette.authentication import requires
@@ -66,14 +68,20 @@ class TrackerAPI(Routable):
     
     async def authenticate(self, conn : HTTPConnection) -> tuple[AuthCredentials, AdminUser] | None:
         auth_token = conn.headers.get("Authorization", None)
-        if auth_token is None:
-            return 
+        cookies = conn.cookies        
         
         if conn.client is not None:
             if conn.client.host in self.blacklisted:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='client is banned')
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail='client is banned')
             
-            scheme, auth_token  = auth_token.split()
+            if cookies == {}:
+                if auth_token is None:
+                    return 
+                else: 
+                    scheme, auth_token  = auth_token.split()
+            else: 
+                scheme, auth_token = cookies['Authorization'].split()
+                                    
             auth = self._dao.authenticate_token(auth_token, 
                                                        conn.client.host, 
                                                        "access")
@@ -108,7 +116,7 @@ class TrackerAPI(Routable):
                                                peer=tracker_request_announce.peer, 
                                                **tracker_request_announce.options.dict())
 
-    @get('/scrape/')
+    @get('/scrape')
     async def scrape(self) -> List[TrackerFile]:
         return self._dao.get_all_tracker_files()
     
@@ -116,66 +124,127 @@ class TrackerAPI(Routable):
     async def token(self, form_data : Annotated[OAuth2PasswordRequestForm, Depends()], request : Request) -> Dict[str, str]:
         # authenticate the password and get the 
         if request.client:
-            auth = self._dao.login(form_data.username, form_data.password, form_data.scopes, request.client.host)
+            auth = self._dao.login(form_data.username, form_data.password , request.client.host)
             if auth:
                 return auth
 
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Incorrect username or password')
         
         else: 
-           raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Client information is missing')       
+           raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Client information is missing')  
+       
+    @post('/login')
+    async def login(self, form_data : Annotated[OAuth2PasswordRequestForm, Depends()], request : Request, response : Response) -> Dict[str, str]:
+        # authenticate the password and get the 
+        if request.client:
+            auth = self._dao.login(form_data.username, form_data.password, request.client.host)
+
+            if auth:
+                    response.set_cookie(
+                        'Authorization', 
+                        value = f"Bearer {auth['access_token']}", 
+                        max_age = config.ACCESS_TOKEN_EXPIRE_SECONDS,
+                        expires = config.ACCESS_TOKEN_EXPIRE_SECONDS, 
+                        httponly=True, 
+                        samesite='lax', 
+                        secure=False)
+                    
+                    
+                    response.set_cookie(
+                        'refresh_token', 
+                        value = auth['refresh_token'],
+                        max_age= config.REFRESH_TOKEN_EXPIRE_SECONDS, 
+                        expires= config.REFRESH_TOKEN_EXPIRE_SECONDS, 
+                        httponly=True, 
+                        samesite='lax', 
+                        secure=False)
+                    
+                    response.set_cookie(
+                        'logged_in', 
+                        value = 'True', 
+                        max_age = config.ACCESS_TOKEN_EXPIRE_SECONDS,
+                        expires = config.ACCESS_TOKEN_EXPIRE_SECONDS, 
+                        httponly=True, 
+                        samesite='lax', 
+                        secure=False)
+                    
+                    return auth
+                    
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Incorrect username or password')
+        
+        else: 
+           raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Client information is missing')            
     
-    @get('/admin/')
+    @get('/admin')
     @requires(scopes=['admin'])
     async def get_admin_page(self, request : Request) -> Dict[str,str] | None:
         return {'html' : 'admin_page'}
 
-    @get('/admin/users/')
+    @get('/admin/users')
     @requires(scopes=['admin'])
     async def get_users(self, request : Request) -> Dict[str,ActiveUser] | None:
         return self._dao.get_all_active_users()
 
     @post('/admin/blacklist')
     @requires(scopes=['admin'])
-    async def blacklist(self, ips : list[str]) -> Dict[str,List[str]]:
+    async def blacklist(self, request : Request, ips : list[str]) -> Dict[str,List[str]]:
         ip_pattern = r'^((([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\.){3})([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])$'
         for ip in ips:
             if re.match(ip_pattern, ip):
                 self.blacklisted.append(ip)
         return {'blacklisted' : self.blacklisted}
     
-    @get('/admin/blacklist/')
+    @get('/admin/blacklist')
     @requires(scopes=['admin'])
-    async def get_blacklist(self) -> Dict[str,List[str]]:
+    async def get_blacklist(self, request : Request) -> Dict[str,List[str]]:
         return {'blacklisted' : self.blacklisted}
+    
+    @post('/create_user')
+    async def create_user(self, form_data : Annotated[OAuth2PasswordRequestForm, Depends()]) -> Dict[str,str | List[str]]:
+        self._dao.create_user(form_data.username,form_data.password,form_data.scopes)
+        return {'status' : 'success', 'username' : form_data.username, 'scopes' : form_data.scopes}
+    
+    
     
 def main():
     # Configure the DAO and database
-    client = MongoClient("localhost", 27017)  
+    client = MongoClient("localhost", 27017) 
     dao = TrackerDao(dbconnection=client)
     dao.create_user('popisgod12','123346',['admin','user'])
-    
-            
+
     # create the trackerAPI server 
     trackerAPI_routes = TrackerAPI(dao)
     trackerAPI = FastAPI()
-    # router memeber inherited from cr.Routable and configured per the annotations.
     trackerAPI.include_router(trackerAPI_routes.router)
     
     # create the trackerWEB server 
     trackerWEB_routes = TrackerWEB()
-    trackerWEB = FastAPI()
-    # router memeber inherited from cr.Routable and configured per the annotations.
-    trackerWEB.include_router(trackerWEB_routes.router)
+    # trackerWEB = FastAPI()
+    # trackerWEB.include_router(trackerWEB_routes.router)
     
+
     main_tracker = FastAPI()
-    main_tracker.mount('/', trackerWEB)
-    main_tracker.mount('/tracker_api',trackerAPI)
+    main_tracker.include_router(trackerWEB_routes.router)
+    main_tracker.mount('/api',trackerAPI)
 
-    main_tracker.add_middleware(AuthenticationMiddleware, backend=trackerAPI)
 
-    
+    origins = [
+        "http://10.100.102.3:3000",
+        "10.100.102.3:3000",
+        "http://localhost:3000",
+        "localhost:3000"
+    ]
+
+    main_tracker.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"]
+    )
+    main_tracker.add_middleware(AuthenticationMiddleware, backend=trackerAPI_routes)
+
     return main_tracker 
 
 if __name__=='__main__':
-        uvicorn.run("trackerAPI:main", port=5000, log_level="info", factory=True)
+    uvicorn.run("trackerAPI:main",host='10.100.102.3' ,port=5000, log_level="info", factory=True)

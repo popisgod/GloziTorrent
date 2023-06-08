@@ -1,7 +1,6 @@
 from __future__ import annotations
 import datetime
 import logging
-from trackerAPI_dependencies import config 
 import jwt
 from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
 from typing import List, Dict, Any, Literal, Annotated, Union, Iterable, Optional
@@ -9,7 +8,12 @@ from pydantic import BaseModel
 from fastapi import Depends
 from pymongo import MongoClient
 from passlib.context import CryptContext
+if __name__ == '__main__':
+    import config
+else:
+    from . import config
 
+ 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -128,7 +132,7 @@ class TrackerDao:
         logging.info(result)
         return [TrackerFile.from_dict(tracker_file) for tracker_file in result]
     
-    def login(self, username : str, password : str, scopes : List[str], ip : str) -> Dict[str, Any] | None:
+    def login(self, username : str, password : str, ip : str) -> Dict[str, Any] | None:
         """checks if the username and password are valid and generates a temporary token
 
         Args:
@@ -139,20 +143,23 @@ class TrackerDao:
             Dict[str, str] | None: an authentication token 
         """
         
-        authenticate_hash_query = {'username' : username, 'scopes' : scopes}
+        authenticate_hash_query = {'username' : username}
         result = self.authentication_table.find_one(authenticate_hash_query)
+
         if result: 
             if verify_password(password ,result['hashed_password']):
                 data = {'ip' : ip, 'aud' : ['refresh',], 'username' : username}
-                refresh_token = self.generate_token(data, scopes, config.ACCESS_TOKEN_EXPIRE_SECONDS*4)
+                refresh_token = self.generate_token(data, result['scopes'], config.REFRESH_TOKEN_EXPIRE_SECONDS)
                 self.refresh_tokens[ip] = refresh_token
                 
                 data = {'ip' : ip, 'aud' : ['access',], 'username' : username}
-                access_token = self.generate_token(data ,scopes, config.ACCESS_TOKEN_EXPIRE_SECONDS)
+                access_token = self.generate_token(data ,result['scopes'], config.ACCESS_TOKEN_EXPIRE_SECONDS)
+                
                 
                 return {"access_token": access_token,
                         "refresh_token" : refresh_token,
-                        "token_type": "Bearer"}
+                        "token_type": "Bearer",
+                        "scopes" : result['scopes']}
         return None
         
     def generate_token(self, data : dict[str,str], scopes : List[str], expiration : int = config.ACCESS_TOKEN_EXPIRE_SECONDS) -> str: 
@@ -216,7 +223,7 @@ class TrackerDao:
                                      'username' : username,
                                      'scopes' : scopes}
         self.authentication_table.insert_one(authentication_hash_query)
-
+        logging.info(f'created a new user: {username}')
 
 def hash_password(password : str) -> str: 
     """ takes in a password and returns the hashed password 

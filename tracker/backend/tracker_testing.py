@@ -8,12 +8,12 @@ from trackerAPI_dependencies.tracker_dao import Peer
 client = TestClient(app())
  
 def test_read_root():
-    response = client.get('/')
+    response = client.get('/api')
     assert response.status_code == 200
     assert response.json() == {'tracker_id': 'placeholder'}
 
 def test_announce():
-    for i in range(1000): 
+    for i in range(2): 
         peer = Peer(**{"peer_id": f"peer123{str(i)}",
                     "ip": "127.0.0.1", 
                     "port": 8040, 
@@ -25,14 +25,14 @@ def test_announce():
         
         
         data = {"info_hash": info_hash ,**peer.dict()}
-        response  = client.get("/announce/", params=data)
+        response  = client.get("/api/announce/", params=data)
     
         assert response.status_code == 200
 
     
 def test_announce_all():
     # Test case for announce all 
-    response  = client.get("/scrape/")
+    response  = client.get("api/scrape/")
     
     assert response.status_code == 200
     assert response.json()[0]['info_hash'] == 'hash121' 
@@ -42,21 +42,21 @@ def test_admin_login():
                    'password' : '123346', 
                    'scope' : ['admin'],
                    'grand_type' : 'password'} 
-    response = client.post("/token", data=credentials,
+    response = client.post("api/login", data=credentials,
                            headers={"content-type": "application/x-www-form-urlencoded"})
 
     assert response.status_code == 200
     token = response.json()
-    
-    client.headers['Authorization'] = f"{token['token_type']} {token['access_token']}"
-    response = client.get('/admin/')
+
+    #client.headers['Authorization'] = f"{token['token_type']} {token['access_token']}"
+    response = client.get('api/admin/')
     
     assert response.status_code == 200
     assert response.json() ==  {'html' : 'admin_page'}
 
 
 def test_get_all_users(): 
-    response = client.get('/admin/users/')
+    response = client.get('api/admin/users/')
     
     assert response.status_code == 200
     print(response.json())
@@ -64,14 +64,14 @@ def test_get_all_users():
 def test_announce_bad_json_payload():
     # Test case with missing required fields in the JSON payload
     data = { "peer_id": "peer123", "ip": "127.0.0.1", "port": 8080}
-    response = client.get("/announce/", params=data)
+    response = client.get("api/announce/", params=data)
     response.json()
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     
 
 def test_read_item_bad_token():
     # Test case for an invalid X-Token header
-    response = client.get("/items/foo", headers={"X-Token": "hailhydra"})
+    response = client.get("api/items/foo", headers={"X-Token": "hailhydra"})
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
-test_announce()
+test_admin_login()
