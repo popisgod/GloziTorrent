@@ -1,6 +1,5 @@
 /tracker/tracker_db
-__pycache__/
-*.vscode
+__pycache__
+.vscode
 .pytest_cache 
 *.log 
-__pycache__

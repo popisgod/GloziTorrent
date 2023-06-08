@@ -12,7 +12,7 @@ from starlette.authentication import requires
 from starlette.authentication import AuthCredentials, AuthenticationError
 from starlette.requests import HTTPConnection
 from starlette.middleware.authentication import AuthenticationMiddleware
-
+from trackerWEB import TrackerWEB
 
 # logging configuration 
 logging.basicConfig(filename='tracker.log', 
@@ -156,16 +156,26 @@ def main():
     dao.create_user('popisgod12','123346',['admin','user'])
     
             
-    # create the tracker server 
-    trackerAPI = TrackerAPI(dao)
-    
-    TrackerAPP = FastAPI()
+    # create the trackerAPI server 
+    trackerAPI_routes = TrackerAPI(dao)
+    trackerAPI = FastAPI()
     # router memeber inherited from cr.Routable and configured per the annotations.
-    TrackerAPP.include_router(trackerAPI.router)
-    TrackerAPP.add_middleware(AuthenticationMiddleware, backend=trackerAPI)
+    trackerAPI.include_router(trackerAPI_routes.router)
     
+    # create the trackerWEB server 
+    trackerWEB_routes = TrackerWEB()
+    trackerWEB = FastAPI()
+    # router memeber inherited from cr.Routable and configured per the annotations.
+    trackerWEB.include_router(trackerWEB_routes.router)
     
-    return TrackerAPI 
+    main_tracker = FastAPI()
+    main_tracker.mount('/', trackerWEB)
+    main_tracker.mount('/tracker_api',trackerAPI)
+
+    main_tracker.add_middleware(AuthenticationMiddleware, backend=trackerAPI)
+
+    
+    return main_tracker 
 
 if __name__=='__main__':
-        uvicorn.run("trackerAPI:main", port=5000, log_level="info", factory=True, )
+        uvicorn.run("trackerAPI:main", port=5000, log_level="info", factory=True)

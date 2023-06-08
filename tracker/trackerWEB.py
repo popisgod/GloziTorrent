@@ -23,4 +23,12 @@ logging.basicConfig(filename='tracker.log',
 
 
 class TrackerWEB(Routable):
-    pass
+    def __init__(self) -> None:
+        pass
+    
+    @get('/')
+    def get_root(self) -> Dict[str, str]:
+        return {'message' : 'this is the root'}
+    
+    def get_admin_root(self) -> Dict[str, str]:
+        return {'message' : 'this is the admin root'}
