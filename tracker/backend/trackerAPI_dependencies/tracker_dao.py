@@ -132,6 +132,18 @@ class TrackerDao:
         logging.info(result)
         return [TrackerFile.from_dict(tracker_file) for tracker_file in result]
     
+    def get_tracker_files(self, numwant : int) -> List[TrackerFile]:
+        """returns a requested number of the tracker files
+
+        Returns:
+            List[TrackerFile]: a list of all of the tracker files stored on the database 
+        """
+        result: List[Dict[str, Any]] = list(self.tracker_files_table.find(limit=numwant))
+        logging.info(result)
+        return [TrackerFile.from_dict(tracker_file) for tracker_file in result]    
+    
+    
+    
     def login(self, username : str, password : str, ip : str) -> Dict[str, Any] | None:
         """checks if the username and password are valid and generates a temporary token
 

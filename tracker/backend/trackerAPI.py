@@ -14,7 +14,7 @@ from starlette.authentication import requires
 from starlette.authentication import AuthCredentials, AuthenticationError
 from starlette.requests import HTTPConnection
 from starlette.middleware.authentication import AuthenticationMiddleware
-from trackerWEB import TrackerWEB
+
 
 # logging configuration 
 logging.basicConfig(filename='tracker.log', 
@@ -117,7 +117,11 @@ class TrackerAPI(Routable):
                                                **tracker_request_announce.options.dict())
 
     @get('/scrape')
-    async def scrape(self) -> List[TrackerFile]:
+    async def scrape(self, numwant : int) -> List[TrackerFile]:
+        return self._dao.get_tracker_files(numwant)
+    
+    @get('/scrape')
+    async def scrape_all(self) -> List[TrackerFile]:
         return self._dao.get_all_tracker_files()
     
     @post('/token')
@@ -217,16 +221,6 @@ def main():
     trackerAPI = FastAPI()
     trackerAPI.include_router(trackerAPI_routes.router)
     
-    # create the trackerWEB server 
-    trackerWEB_routes = TrackerWEB()
-    # trackerWEB = FastAPI()
-    # trackerWEB.include_router(trackerWEB_routes.router)
-    
-
-    main_tracker = FastAPI()
-    main_tracker.include_router(trackerWEB_routes.router)
-    main_tracker.mount('/api',trackerAPI)
-
 
     origins = [
         "http://10.100.102.3:3000",
@@ -235,16 +229,16 @@ def main():
         "localhost:3000"
     ]
 
-    main_tracker.add_middleware(
+    trackerAPI.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"]
     )
-    main_tracker.add_middleware(AuthenticationMiddleware, backend=trackerAPI_routes)
+    trackerAPI.add_middleware(AuthenticationMiddleware, backend=trackerAPI_routes)
 
-    return main_tracker 
+    return trackerAPI 
 
 if __name__=='__main__':
     uvicorn.run("trackerAPI:main",host='10.100.102.3' ,port=5000, log_level="info", factory=True)

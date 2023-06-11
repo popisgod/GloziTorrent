@@ -3,7 +3,9 @@ from fastapi import status
 from trackerAPI import main as app 
 from typing import List
 from trackerAPI_dependencies.tracker_dao import Peer
-
+import jwt 
+from jwt.exceptions import InvalidSignatureError, ExpiredSignatureError
+import json, base64
 
 client = TestClient(app())
  
@@ -27,7 +29,7 @@ def test_announce():
         data = {"info_hash": info_hash ,**peer.dict()}
         response  = client.get("/api/announce/", params=data)
     
-        assert response.status_code == 200
+        assert response.status_code == 20  
 
     
 def test_announce_all():
@@ -45,8 +47,22 @@ def test_admin_login():
     response = client.post("api/login", data=credentials,
                            headers={"content-type": "application/x-www-form-urlencoded"})
 
+
+
     assert response.status_code == 200
     token = response.json()
+    
+    # Extracting the payload from the JWT token
+    payload = token['access_token'].split('.')[1]
+
+    # Decoding the payload
+    decoded_payload = base64.urlsafe_b64decode(payload + '===').decode('utf-8')
+
+    # Parsing the decoded payload as JSON
+    payload_data = json.loads(decoded_payload)
+
+    # Extracting the expiry date from the payload
+    expiry_date = payload_data['exp']
 
     #client.headers['Authorization'] = f"{token['token_type']} {token['access_token']}"
     response = client.get('api/admin/')
