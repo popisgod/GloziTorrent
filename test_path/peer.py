@@ -362,8 +362,6 @@ def get_id() -> str:
     return data['UUID']
         
     
-        
-    
 if __name__=='__main__':
     
     # ------- tests -------
@@ -374,19 +372,4 @@ if __name__=='__main__':
     
     # creating a torrent file 
     peer = Peer()
-    torrent_path = peer.create_torrent_file(r"C:\Users\Ron\Downloads\Web scraping- example.pptx")
-    
-    with open(torrent_path, 'r') as f: 
-        data = json.load(f)
-    info_hash = data['info_hash']
-    
-    # check what file parts are available 
-    torrent_data = Peer.torrent_file_exists(info_hash)
- 
-    peer.announce(data['info_hash'], '')
-    
-    if torrent_data:
-        file_parts = Peer.file_parts_available(torrent_data['info_hash']) 
-
-    while True:
-        pass
+    peer.download_file('60af676a89787c1b03c4095a40843bac6c3d81a1e2dbae64a94f1e4dcab920b7') 
