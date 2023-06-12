@@ -180,7 +180,6 @@ class Peer:
 
 
             except socket.error as e: 
-                raise(e)
                 print(f"Error connecting to {address.ip}:{address.port}: {e}")
         print('file wasn not found')
    
@@ -379,6 +378,12 @@ if __name__=='__main__':
     
     # creating a torrent file 
     peer = Peer()
+    
+    torrent = peer.create_torrent_file(r"C:\Users\Ron\Downloads\מסעדה.mp4")
+    with open(torrent, 'r') as file:
+        data = json.load(file)
+    
+    peer.announce(data['info_hash'], '')
     
     while True:
         pass

@@ -180,7 +180,6 @@ class Peer:
 
 
             except socket.error as e: 
-                raise(e)
                 print(f"Error connecting to {address.ip}:{address.port}: {e}")
         print('file wasn not found')
    
