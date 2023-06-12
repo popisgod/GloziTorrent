@@ -17,7 +17,7 @@ from threading import Thread
 
 # Local application imports
 from utils import networking_utils 
-
+from utils.setup import setup_peer
 
 BUFSIZE = 256000
 TORRENT_FILES_DIR = '.torrent'
@@ -44,12 +44,17 @@ class FilePart:
 
 class Peer: 
     def __init__(self) -> None:
+        setup_peer()
         # tracker holding information about peers 
         self.tracker = 'http://10.100.102.3:5000/'
         self.port = networking_utils.get_open_port()
         self.ip = networking_utils.get_host_ip()
         self.peer_id = get_id()
         self.stopped = []
+
+        
+        os.makedirs(TORRENT_FILES_DIR, exist_ok=True)
+        os.makedirs('downloads', exist_ok=True)
 
         # socket for connecting to peers 
         self.socket = socket.socket(
@@ -362,6 +367,8 @@ def get_id() -> str:
     return data['UUID']
         
     
+        
+    
 if __name__=='__main__':
     
     # ------- tests -------
@@ -372,4 +379,6 @@ if __name__=='__main__':
     
     # creating a torrent file 
     peer = Peer()
-    peer.download_file('60af676a89787c1b03c4095a40843bac6c3d81a1e2dbae64a94f1e4dcab920b7') 
+    
+    while True:
+        pass
