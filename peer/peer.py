@@ -168,6 +168,11 @@ class Peer:
         
         return torrent_path
     
+    def scrape(self) -> List[Dict[str,Any]]: 
+        url = self.tracker + 'scrape'
+
+        res = requests.get(url).json()
+        return res 
     
     def get_torrent_file(self, info_hash : str, peers : List[Address]) -> Dict[str, Any] | None:
         # connect to peers 

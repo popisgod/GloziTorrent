@@ -77,7 +77,7 @@ def get_server_time(code: int = 0) -> str:
 
     return server_time
 
-# -> list[(str, str)]
+
 def get_random_quotes(number_of_quotes: int):
     '''
     placeholder 
@@ -102,10 +102,11 @@ def get_random_quotes(number_of_quotes: int):
             quote = '"' + quote.text.strip() + '"'
             author = authors[i].find('b').text.strip()
             quote_author_pairs.append((quote, author))
-    return quote_author_pairs[:number_of_quotes]
+            
+        return quote_author_pairs[:number_of_quotes]
+    return []
 
-
-def get_host_ip() -> int:
+def get_host_ip() -> str:
     '''
     Using sockets gets the system ip.
 
