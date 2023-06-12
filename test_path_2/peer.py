@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import shutil
 import select
 from threading import Thread
+from time import sleep
 
 # Third party imports 
 
@@ -51,7 +52,7 @@ class Peer:
         self.ip = networking_utils.get_host_ip()
         self.peer_id = get_id()
         self.stopped = []
-
+        self.peers = []
         
         os.makedirs(TORRENT_FILES_DIR, exist_ok=True)
         os.makedirs('downloads', exist_ok=True)
@@ -79,26 +80,35 @@ class Peer:
 
 
     def announce(self, info_hash : str, event : str) -> None | List[dict[str, str]]:
-        announce_url = self.tracker + 'announce/'
+        
+        try: 
+            announce_url = self.tracker + 'announce/'
 
-        
-        params = {
-            'info_hash' : info_hash,
-            'peer_id' : self.peer_id,
-            'ip' : self.ip,
-            'port' : self.port,
-            'downloaded' : '0',
-            'uploaded' : '0',
-            'left' : '0',
-            'event' : event
-        } 
-        
-        announce_res = requests.get(announce_url, params=params)
-        if announce_res.status_code != 200:
-            print('api does not respond')
+            
+            params = {
+                'info_hash' : info_hash,
+                'peer_id' : self.peer_id,
+                'ip' : self.ip,
+                'port' : self.port,
+                'downloaded' : '0',
+                'uploaded' : '0',
+                'left' : '0',
+                'event' : event
+            } 
+            
+            announce_res = requests.get(announce_url, params=params)
+            if announce_res.status_code != 200:
+                print('api does not respond')
 
-        return announce_res.json()
-        
+            for peer in announce_res.json():
+                if peer not in self.peers:
+                    self.peers.append(peer)
+            
+            return announce_res.json()
+        except requests.exceptions.ConnectionError as e:
+            return self.peers 
+            
+            
         
     def create_torrent_file(self,file_path : str) -> str: 
         """
@@ -372,18 +382,15 @@ if __name__=='__main__':
     
     # ------- tests -------
     
-    if not os.path.exists(TORRENT_FILES_DIR):
-        os.makedirs(TORRENT_FILES_DIR, exist_ok=True)
-
     
     # creating a torrent file 
     peer = Peer()
     
-    torrent = peer.create_torrent_file(r"C:\Users\Ron\Downloads\מסעדה.mp4")
-    with open(torrent, 'r') as file:
-        data = json.load(file)
+    peer.download_file('76949f99e70d7ff84b2104481c4afc44c7cb9145492ea8c7db68eab9086859ca')
     
-    peer.announce(data['info_hash'], '')
+    sleep(50)
+    
+    peer.download_file('76949f99e70d7ff84b2104481c4afc44c7cb9145492ea8c7db68eab9086859ca')
     
     while True:
         pass

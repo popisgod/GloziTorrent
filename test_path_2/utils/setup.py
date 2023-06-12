@@ -1,6 +1,7 @@
 import json 
 import utils.torrent_utils as torrent_utils
 import sqlite3
+import os 
 
 def setup_peer():
     '''
@@ -9,9 +10,13 @@ def setup_peer():
     PEER_UUID = torrent_utils.generate_random_hash()
     PEER_INFO = {'UUID' : PEER_UUID}
     
-    with open('settings.json','w') as f:
-        data = json.dumps(PEER_INFO)
-        f.write(data)
+    if os.path.exists('settings.json'):
+        return 
+
+    else: 
+        with open('settings.json','w') as f:
+            data = json.dumps(PEER_INFO)
+            f.write(data)
 
 def setup_server():
     '''
