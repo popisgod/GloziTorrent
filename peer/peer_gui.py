@@ -174,9 +174,7 @@ class PeerGUI(tk.Tk):
             with open(os.path.join('.torrent',torrent_file), 'r') as file:
                 torrent_data = json.load(file)
             self.peer.announce(torrent_data['info_hash'], torrent_data['info']['name'], 'completed')
-            print(data)
             if len(data) == 0: 
-                print('hello')
                 listbox.insert(tk.END, f"{torrent_data['info']['name']} - {torrent_data['info_hash']} - peers : unknown") 
                 listbox.selection_set(j, None)
                 j += 1

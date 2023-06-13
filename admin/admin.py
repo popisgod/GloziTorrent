@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 import requests
 import threading
+import time
 
 API_BASE_URL = 'http://10.100.102.3:5000'
 REFRESH_INTERVAL = 5  # Refresh interval in seconds
@@ -35,31 +36,44 @@ class AdminApp(tk.Tk):
         self.files_listbox.grid(row=1, column=2, padx=10, pady=10, sticky=tk.NSEW)
         
         self.blacklist_button = ttk.Button(self.dashboard_frame, text="Blacklist User", style="Primary.TButton", command=self.blacklist_user)
-        self.blacklist_button.grid(row=2, column=0, padx=10, pady=10, sticky=tk.W)
+        self.blacklist_button.grid(row=2, column=0, padx=10, pady=10, sticky=tk.EW)
 
         self.server_status = ttk.Label(self.dashboard_frame, text="Server is UP",foreground='green')
-        self.server_status.grid(row=2, column=1, padx=10, pady=10, sticky=tk.NSEW)
+        self.server_status.grid(row=2, column=1, padx=10, pady=10)
 
         self.columnconfigure(0, weight=1)  # Make columns expandable
         self.columnconfigure(1, weight=1)
         self.columnconfigure(2, weight=1)
         self.rowconfigure(1, weight=1)  # Make row expandable
 
+        self.dashboard_frame.columnconfigure(0, weight=1)  # Make frame columns expandable
+        self.dashboard_frame.columnconfigure(1, weight=1)
+        self.dashboard_frame.columnconfigure(2, weight=1)
+        self.dashboard_frame.rowconfigure(1, weight=1)  # Make frame row expandable
+
+        tk.Grid.columnconfigure(self, tuple(range(1)), weight=10, minsize=20)
+        tk.Grid.rowconfigure(self, tuple(range(1)), weight=10)
+
         self.refresh_thread = None
     
     def update_lists(self):
         try: 
-            print('hello')
             self.populate_blacklisted_users()
             self.populate_users()
             self.populate_files()
             self.server_status.config(text='server is UP',foreground='green')
-        except requests.exceptions.ConnectionError as e:
+            self.blacklist_button.config(state='normal')
+        except (requests.exceptions.ConnectionError, TimeoutError) as e:
             print('server is downs')
             self.server_status.config(text='server is DOWN',foreground='red')
+            self.blacklist_button.config(state='disabled')
             
-            self.after(REFRESH_INTERVAL * 1000, self.update_lists)  # Schedule the next update
-        
+            time.sleep(REFRESH_INTERVAL)
+            
+    def wrapper(self):
+        while True: 
+            self.update_lists()
+            time.sleep(REFRESH_INTERVAL)
 
     def populate_blacklisted_users(self):
         self.blacklisted_users_listbox.delete(0, tk.END)
@@ -95,15 +109,16 @@ class AdminApp(tk.Tk):
     def blacklist_user(self):
         selected_user = self.users_listbox.get(tk.ACTIVE)
         username = selected_user.strip()
-        print(username)
+        
         response = requests.post(f'{API_BASE_URL}/admin/blacklist', json=[username], cookies = self.cookies)
         print(response.json())
         if response.status_code == 200:
+            self.users_listbox.delete(tk.ACTIVE)
             self.update_lists()
     
     def start(self):
         self.dashboard_frame.pack(fill=tk.BOTH, expand=True)
-        self.update_lists()
+        threading.Thread(target=self.wrapper).start()
         self.mainloop()
     
     def stop(self):
@@ -119,7 +134,7 @@ class AdminApp(tk.Tk):
             if response.status_code == 200:
                 self.login_frame.pack_forget()
                 self.cookies = response.cookies
-                self.geometry("450x300")
+                self.geometry("1000x500")
                 self.minsize(450, 300)  
                 self.resizable(True,True)
                 self.start()
