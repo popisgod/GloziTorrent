@@ -1,6 +1,15 @@
 # Standard library imports
+import requests 
+import socket 
+import pickle 
 import json
+import os 
+import hashlib
+import pathlib
 from typing import Dict, List, Any, Tuple
+from dataclasses import dataclass
+import shutil
+import select
 from threading import Thread
 from time import sleep
 import json
@@ -8,8 +17,7 @@ import tkinter as tk
 from tkinter import font
 from tkinter import ttk
 from tkinter import filedialog
-import time 
-import os 
+
 
 # Third party imports 
 from PIL import Image, ImageTk, ImageOps
@@ -36,7 +44,7 @@ ENTRY_COLOR = "#1E1F22"
 class PeerGUI(tk.Tk): 
     def __init__(self) -> None:
         super().__init__()
-        self.peer : peer.Peer = peer.Peer()
+        self.peer = peer.Peer()
         self.create_session_list_window()
 
     def create_session_list_window(self):
@@ -271,8 +279,8 @@ class PeerGUI(tk.Tk):
         login_window.configure(bg="#1e1e1e")
 
         # Set the window size and position
-        window_width = 300
-        window_height = 170 
+        window_width = 225
+        window_height = 128 if 'NO CODE' not in selected_item else 100
         screen_width = login_window.winfo_screenwidth()
         screen_height = login_window.winfo_screenheight()
         x = int((screen_width/2) - (window_width/2))
@@ -298,59 +306,14 @@ class PeerGUI(tk.Tk):
         form_frame = ttk.Frame(login_window)
         form_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
-        # Create a label for the download status
-        status_label = ttk.Label(form_frame, text="Click to download", foreground="white")
-        status_label.pack(pady=10)
 
-        # Create a progress bar
-        progress = ttk.Progressbar(form_frame, mode='determinate', maximum=100,length=200)
-        progress.pack(pady=10)
-
-        # Create a function to simulate the download progress
-        def download_bar(info_hash : str, name : str):
-            submit_button.configure(state='disabled')  # Disable the download button
-            status_label.config(text="Downloading...")
-                  # Start the progress bar
-            read_pipe, write_pipe = os.pipe()
-            
-            download_thread = Thread(target=self.download, args=(info_hash, name, write_pipe))
-            download_thread.daemon = True
-            download_thread.start()
-            
-            # Simulate the download progress
-            while True: 
-                data = os.read(read_pipe, 1024) # Simulate some delay
-                data = json.loads(data.decode())
-                if data['msg'] == 'success':
-                    progress['value'] = 100  # Update the progress bar
-                    # Update the status label and stop the progress bar
-                    status_label.config(text="Download Complete")
-                    break
-                
-                elif data['msg'] == 'failed':
-                    status_label.config(text="Download Failed,\npress download to try again...")
-                    submit_button.configure(state='noraml') 
-                    break
-                elif data['msg'] == 'update':
-                    progress['value'] = int(data['number']) 
-                
-                time.sleep(0.1)
-                
-            os.close(read_pipe)
-            os.close(write_pipe)
-
-
-        # Create a button to submit the download form
-        submit_button = ttk.Button(form_frame, text="Download", command=lambda : download_bar(info_hash, name))
-        submit_button.pack()
-
-        # Hide the progress bar initially
-        progress.stop()
+        # Create a button to submit the login form
+        submit_button = ttk.Button(form_frame, text="Login", command=lambda: [self.download(info_hash, name),login_window.destroy()])
+        submit_button.grid(row=2, column=0, columnspan=2, pady=5)
         
         
-    def download(self, info_hash : str, name : str, pipe : int) -> None:
-        if self.peer.download_file(info_hash, name, pipe):
-            self.peer.announce(info_hash, name, 'completed')
+    def download(self, info_hash : str, name : str) -> None:
+        self.peer.download_file(info_hash)
         
     
     def create_torrent_window(self) -> None:

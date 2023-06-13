@@ -50,6 +50,7 @@ class TrackerRequestAnnounce(BaseModel):
         BaseModel (_type_): _description_
     """
     info_hash : str
+    name : str
     peer : Annotated[Peer, Depends()]
     options : Annotated[ExtraAnnounceOptions, Depends()]
 
@@ -113,14 +114,15 @@ class TrackerAPI(Routable):
     @get('/announce/')
     async def announce(self, tracker_request_announce :  Annotated[TrackerRequestAnnounce, Depends(TrackerRequestAnnounce)]) -> List[Peer]:
         return self._dao.update_tracker_files(info_hash=tracker_request_announce.info_hash, 
+                                              name = tracker_request_announce.name, 
                                                peer=tracker_request_announce.peer, 
                                                **tracker_request_announce.options.dict())
 
-    @get('/scrape')
+    @get('/scrape/')
     async def scrape(self, numwant : int) -> List[TrackerFile]:
         return self._dao.get_tracker_files(numwant)
     
-    @get('/scrape')
+    @get('/scrape/all')
     async def scrape_all(self) -> List[TrackerFile]:
         return self._dao.get_all_tracker_files()
     

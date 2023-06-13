@@ -1,0 +1,1 @@
+{"announce": "http://10.100.102.3:5000/", "info": {"length": 66089, "path": "", "name": "pendulum_data.xlsx", "piece length": 128000, "pieces": {"0": "7da0228fc16e4c65e188215000932a4fb407e011def84b797793edf53ea382d5"}, "file_hash": "7da0228fc16e4c65e188215000932a4fb407e011def84b797793edf53ea382d5"}, "info_hash": "7e25e244812d091d2610f6d38317ec0921d609146ce9db28060778cc81347e46"}

@@ -76,16 +76,17 @@ class Peer:
         for torrent_name in os.listdir(TORRENT_FILES_DIR):
             with open(os.path.join(TORRENT_FILES_DIR, torrent_name), 'r') as file:
                 data = json.load(file)
-            self.announce(data['info_hash'], 'stopped')        
+            self.announce(data['info_hash'], data['info']['name'], 'stopped')        
 
 
-    def announce(self, info_hash : str, event : str) -> None | List[dict[str, str]]:
+    def announce(self, info_hash : str, name : str, event : str) -> None | List[dict[str, str]]:
         
         try: 
             announce_url = self.tracker + 'announce/'
 
             
             params = {
+                'name' : name, 
                 'info_hash' : info_hash,
                 'peer_id' : self.peer_id,
                 'ip' : self.ip,
@@ -107,8 +108,7 @@ class Peer:
             return announce_res.json()
         except requests.exceptions.ConnectionError as e:
             return self.peers 
-            
-            
+               
         
     def create_torrent_file(self,file_path : str) -> str: 
         """
@@ -168,14 +168,16 @@ class Peer:
         
         return torrent_path
     
+    
     def scrape(self) -> List[Dict[str,Any]]: 
-        url = self.tracker + 'scrape'
-
-        res = requests.get(url).json()
-        return res 
+        url = self.tracker + 'scrape/all'
+        res = requests.get(url)
+        return res.json()
+    
     
     def get_torrent_file(self, info_hash : str, peers : List[Address]) -> Dict[str, Any] | None:
         # connect to peers 
+        self.not_active = []
         for address in peers: 
             try: 
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -196,27 +198,29 @@ class Peer:
 
             except socket.error as e: 
                 print(f"Error connecting to {address.ip}:{address.port}: {e}")
+                self.not_active.append(address)
         print('file wasn not found')
    
-    
-    def download_file(self, info_hash : str) -> None:
-        peers = self.announce(info_hash,'started')
+
+    def download_file(self, info_hash : str, name : str, pipe : int | None = None) -> None:
+        peers = self.announce(info_hash, name, 'started')
         if peers is None:
             print('File does not exist')
             return
-        if len(peers) == 1:
-            print('No peers hold the file')
-            return 
-        
+
         addresss_list : List[Address] = []
         for peer in peers:
             addresss_list.append(Address(peer['ip'], int(peer['port'])))
+            
         torrent_file = self.get_torrent_file(info_hash, addresss_list) 
         if torrent_file is None:
             print('File does not exist')
             return    
         
-
+        for address in addresss_list:
+            if address in self.not_active: 
+                addresss_list.remove(address)
+        
         with open(os.path.join(TORRENT_FILES_DIR, torrent_file['info']['name'].split('.')[0] + '.torrent'), 'w') as file:
             json.dump(torrent_file, file)
             
@@ -228,10 +232,15 @@ class Peer:
                 parts_missing.remove(part)
         
         parts_per_peer = self.get_file_parts_availablity(info_hash, addresss_list)
-
+        total = len(parts_missing)
+        
         while parts_missing: 
+            if pipe:
+                os.write(pipe, json.dumps({'msg' : 'update', 'number' : (len(parts_missing) // total) * 100}).encode())
             if all(element == [] for element in list(parts_per_peer.values())):
                 print('peers miss a part, file is not downloadable')
+                if pipe:
+                    os.write(pipe, json.dumps({'msg' : 'failed'}).encode())
                 return 
           
             for address in addresss_list:
@@ -260,6 +269,10 @@ class Peer:
             for part_hash in torrent_file['info']['pieces'].values():
                 with open(os.path.join(torrent_file['info_hash'], part_hash + '.bin'), 'rb') as part_file:
                     file.write(part_file.read())
+        if pipe:
+            os.write(pipe, json.dumps({'msg' : 'success'}).encode())
+        return {'status': 'success'}
+        
         
     def get_file_parts_availablity(self, info_hash : str, peers : List[Address]) -> Dict[Tuple[str, int], List[str]]:
         
@@ -313,6 +326,7 @@ class Peer:
                 hash = filepart.split('.')[0]
                 hashes.append(hash)
         return hashes
+
 
 class PeerServer(socket.socket):
     def __init__(self, port : int, peer_id : str) -> None:

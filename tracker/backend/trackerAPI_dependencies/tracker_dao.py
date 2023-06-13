@@ -45,19 +45,22 @@ class Peer(BaseModel):
 class TrackerFile(BaseModel):
     info_hash : str
     peers : List[Peer]
+    name : str
     
     @classmethod
     def from_dict(cls, data : Dict[str, Any]) -> TrackerFile:
         info_hash = str(data.get('info_hash', ' '))
         peers_data = list(data.get('peers', []))
+        name = str(data.get('name', ' '))
         peers = [Peer(**peer) for peer in peers_data]
     
-        return cls(info_hash=info_hash, peers=peers)
+        return cls(info_hash=info_hash, peers=peers, name=name)
     
     def to_dict(self) -> Dict[str, Any]:
         return {
             'info_hash' : self.info_hash,
-            'peers' : [peer.dict() for peer in self.peers]
+            'peers' : [peer.dict() for peer in self.peers],
+            'name' : self.name
         } 
 
 
@@ -78,6 +81,7 @@ class TrackerDao:
         
     def update_tracker_files(self, info_hash : str, 
                              peer : Annotated[Peer, Depends(Peer)], 
+                             name : str,
                              compact_mode : bool, 
                              no_peer_id : bool, 
                              numwant : int | None,
@@ -114,7 +118,7 @@ class TrackerDao:
             return peers
             
         else: 
-            new_file = TrackerFile(info_hash=info_hash, peers=[peer,])
+            new_file = TrackerFile(info_hash=info_hash, peers=[peer,], name=name)
             self.tracker_files_table.insert_one(new_file.to_dict())
             logging.info(f'peer {peer.peer_id} has announced of a new tracker file {info_hash}')
             return [peer,]

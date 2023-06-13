@@ -76,16 +76,17 @@ class Peer:
         for torrent_name in os.listdir(TORRENT_FILES_DIR):
             with open(os.path.join(TORRENT_FILES_DIR, torrent_name), 'r') as file:
                 data = json.load(file)
-            self.announce(data['info_hash'], 'stopped')        
+            self.announce(data['info_hash'], data['info']['name'], 'stopped')        
 
 
-    def announce(self, info_hash : str, event : str) -> None | List[dict[str, str]]:
+    def announce(self, info_hash : str, name : str, event : str) -> None | List[dict[str, str]]:
         
         try: 
             announce_url = self.tracker + 'announce/'
 
             
             params = {
+                'name' : name, 
                 'info_hash' : info_hash,
                 'peer_id' : self.peer_id,
                 'ip' : self.ip,
@@ -168,6 +169,11 @@ class Peer:
         
         return torrent_path
     
+    def scrape(self) -> List[Dict[str,Any]]: 
+        url = self.tracker + 'scrape/all'
+
+        res = requests.get(url).json()
+        return res 
     
     def get_torrent_file(self, info_hash : str, peers : List[Address]) -> Dict[str, Any] | None:
         # connect to peers 
@@ -194,8 +200,8 @@ class Peer:
         print('file wasn not found')
    
     
-    def download_file(self, info_hash : str) -> None:
-        peers = self.announce(info_hash,'started')
+    def download_file(self, info_hash : str, name : str) -> None:
+        peers = self.announce(info_hash, name, 'started')
         if peers is None:
             print('File does not exist')
             return
