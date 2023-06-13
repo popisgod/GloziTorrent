@@ -54,7 +54,7 @@ class PeerGUI(tk.Tk):
         self.configure(bg="#1e1e1e")
 
         # Set the window size and position
-        window_width = 790
+        window_width = 1400
         window_height = 340
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
@@ -163,28 +163,33 @@ class PeerGUI(tk.Tk):
 
 
         data = self.peer.scrape()        
-        j = 0
-        
-        
-        # clear the current session list in the listbox
+
+
+
         listbox.selection_clear(0, tk.END)
         listbox.delete(0, tk.END)
-
+        list_file_names = []
         for torrent_file in os.listdir('.torrent'):
             with open(os.path.join('.torrent',torrent_file), 'r') as file:
                 torrent_data = json.load(file)
             self.peer.announce(torrent_data['info_hash'], torrent_data['info']['name'], 'completed')
+            list_file_names.append(torrent_data['info']['name'])
             if len(data) == 0: 
-                listbox.insert(tk.END, f"{torrent_data['info']['name']} - {torrent_data['info_hash']} - peers : unknown") 
-                listbox.selection_set(j, None)
-                j += 1
-
-
+                if listbox.size() == 0:
+                    if torrent_data['info']['name'] in os.listdir('downloads'):
+                        listbox.insert(tk.END, f"{torrent_data['info']['name']} -| {torrent_data['info_hash']} -| downloaded") 
+                    else: 
+                       listbox.insert(tk.END, f"{torrent_data['info']['name']} -| {torrent_data['info_hash']}") 
+                    listbox.selection_set(tk.END, None)
         
+
         # iterate over the sessions list received from the server and add them to the listbox
         for i, file in enumerate(data):
-            listbox.insert(tk.END, f"{file['name']} - {file['info_hash']} - peers : {len(file['peers'])}") 
-            listbox.selection_set(i, None)
+            if file['name'] in os.listdir('downloads'):
+                listbox.insert(tk.END, f"{file['name']} -| {file['info_hash']} -| peers : {len(file['peers'])} -| downloaded") 
+            else: 
+                listbox.insert(tk.END, f"{file['name']} -| {file['info_hash']} -| peers : {len(file['peers'])}") 
+            listbox.selection_set(tk.END, None)
 
 
     def create_help_window(self) -> None: 
@@ -260,7 +265,7 @@ class PeerGUI(tk.Tk):
         """
         # Get the session ID and name using regex
         selected_index = event.widget.curselection()[0]
-        selected_item = event.widget.get(selected_index).strip().split('-')
+        selected_item = event.widget.get(selected_index).strip().split('-|')
         name = selected_item[0].strip()
         info_hash = selected_item[1].strip()
 
@@ -307,12 +312,12 @@ class PeerGUI(tk.Tk):
         status_label = ttk.Label(form_frame, text="Click to download", foreground="white")
         status_label.pack(pady=10)
 
-        # Create a progress bar
         progress = ttk.Progressbar(form_frame, mode='determinate', maximum=100,length=200)
         progress.pack(pady=10)
 
         # Create a function to simulate the download progress
         def download_bar(info_hash : str, name : str):
+ 
             submit_button.configure(state='disabled')  # Disable the download button
             status_label.config(text="Downloading...")
                   # Start the progress bar
@@ -322,10 +327,16 @@ class PeerGUI(tk.Tk):
             download_thread.daemon = True
             download_thread.start()
             
-            # Simulate the download progress
+            progress_bar_handler = Thread(target=handle_progress_bar, args=(write_pipe, read_pipe))
+            progress_bar_handler.daemon = True
+            progress_bar_handler.start()        
+            
+        def handle_progress_bar(write_pipe, read_pipe): 
+            
+           # Simulate the download progress
             while True: 
                 data = os.read(read_pipe, 1024) # Simulate some delay
-                data = json.loads(data.decode())
+                data =  json.loads(data.decode())
                 if data['msg'] == 'success':
                     progress['value'] = 100  # Update the progress bar
                     # Update the status label and stop the progress bar
@@ -336,21 +347,21 @@ class PeerGUI(tk.Tk):
                     status_label.config(text="Download Failed,\npress download to try again...")
                     submit_button.configure(state='noraml') 
                     break
+                
                 elif data['msg'] == 'update':
                     progress['value'] = int(data['number']) 
-                
-                time.sleep(0.1)
-                
+                    
+                         
             os.close(read_pipe)
             os.close(write_pipe)
-
-
+            self.reload_sessions(self.listbox)
+            
         # Create a button to submit the download form
         submit_button = ttk.Button(form_frame, text="Download", command=lambda : download_bar(info_hash, name))
         submit_button.pack()
 
         # Hide the progress bar initially
-        progress.stop()
+        
         
         
     def download(self, info_hash : str, name : str, pipe : int) -> None:
@@ -366,7 +377,7 @@ class PeerGUI(tk.Tk):
             with open(torrent_path,'r') as file:
                 data = json.load(file)
             self.peer.announce(data['info_hash'],data['info']['name'] ,'')
-            self.reload_sessions(self.listbox)
+        self.reload_sessions(self.listbox)
             
 if __name__=='__main__':
     peer = PeerGUI()

@@ -20,7 +20,7 @@ from time import sleep
 from utils import networking_utils 
 from utils.setup import setup_peer
 
-BUFSIZE = 256000
+BUFSIZE = 3145728
 TORRENT_FILES_DIR = '.torrent'
 
 @dataclass
@@ -209,6 +209,8 @@ class Peer:
         peers = self.announce(info_hash, name, 'started')
         if peers is None:
             print('File does not exist')
+            if pipe:
+                os.write(pipe, json.dumps({'msg' : 'failed'}).encode())
             return
 
         addresss_list : List[Address] = []
@@ -218,6 +220,8 @@ class Peer:
         torrent_file = self.get_torrent_file(info_hash, addresss_list) 
         if torrent_file is None:
             print('File does not exist')
+            if pipe:
+                os.write(pipe, json.dumps({'msg' : 'failed'}).encode())
             return    
         
         for address in addresss_list:
@@ -238,8 +242,8 @@ class Peer:
         total = len(parts_missing)
         
         while parts_missing: 
-            if pipe:
-                os.write(pipe, json.dumps({'msg' : 'update', 'number' : (len(parts_missing) // total) * 100}).encode())
+            if pipe and len(parts_missing) != 0:
+                os.write(pipe, json.dumps({'msg' : 'update', 'number' : 100 - int((len(parts_missing) / total) * 100)}).encode())
             if all(element == [] for element in list(parts_per_peer.values())):
                 print('peers miss a part, file is not downloadable')
                 if pipe:
@@ -367,6 +371,7 @@ class PeerServer(socket.socket):
                             self.disconnect(sock)
                         else: 
                             msg : Message = pickle.loads(msg) # type: ignore
+                            print(msg)
                             
                             if msg.msg == ".torrent": 
                                 msg.data = Peer.torrent_file_exists(msg.data)
