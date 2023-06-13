@@ -97,7 +97,7 @@ class Peer:
                 'event' : event
             } 
             
-            announce_res = requests.get(announce_url, params=params)
+            announce_res = requests.get(announce_url, params=params, timeout=0.5)
             if announce_res.status_code != 200:
                 print('api does not respond')
 
@@ -106,7 +106,7 @@ class Peer:
                     self.peers.append(peer)
             
             return announce_res.json()
-        except requests.exceptions.ConnectionError as e:
+        except (requests.exceptions.ConnectionError, TimeoutError) as e:
             return self.peers 
                
         
@@ -170,10 +170,13 @@ class Peer:
     
     
     def scrape(self) -> List[Dict[str,Any]]: 
-        url = self.tracker + 'scrape/all'
-        res = requests.get(url)
-        return res.json()
-    
+        try: 
+            url = self.tracker + 'scrape/all'
+            res = requests.get(url, timeout=0.5)
+            return res.json()
+        except (requests.exceptions.ConnectionError, TimeoutError) as e:
+            return [] 
+            
     
     def get_torrent_file(self, info_hash : str, peers : List[Address]) -> Dict[str, Any] | None:
         # connect to peers 
@@ -271,6 +274,8 @@ class Peer:
                     file.write(part_file.read())
         if pipe:
             os.write(pipe, json.dumps({'msg' : 'success'}).encode())
+        
+        self.announce(info_hash, name, 'completed')
         return {'status': 'success'}
         
         

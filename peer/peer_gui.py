@@ -161,13 +161,28 @@ class PeerGUI(tk.Tk):
             None.
         """
 
-        data = self.peer.scrape()
-        print(data)
-            
+
+        data = self.peer.scrape()        
+        j = 0
+        
+        
         # clear the current session list in the listbox
         listbox.selection_clear(0, tk.END)
         listbox.delete(0, tk.END)
 
+        for torrent_file in os.listdir('.torrent'):
+            with open(os.path.join('.torrent',torrent_file), 'r') as file:
+                torrent_data = json.load(file)
+            self.peer.announce(torrent_data['info_hash'], torrent_data['info']['name'], 'completed')
+            print(data)
+            if len(data) == 0: 
+                print('hello')
+                listbox.insert(tk.END, f"{torrent_data['info']['name']} - {torrent_data['info_hash']} - peers : unknown") 
+                listbox.selection_set(j, None)
+                j += 1
+
+
+        
         # iterate over the sessions list received from the server and add them to the listbox
         for i, file in enumerate(data):
             listbox.insert(tk.END, f"{file['name']} - {file['info_hash']} - peers : {len(file['peers'])}") 
@@ -195,8 +210,8 @@ class PeerGUI(tk.Tk):
         help_window.configure(bg="#1e1e1e")
 
         # Set the window size and position
-        window_width = 635
-        window_height = 385
+        window_width = 700
+        window_height = 200
         screen_width = help_window.winfo_screenwidth()
         screen_height = help_window.winfo_screenheight()
         x = int((screen_width/2) - (window_width/2))
@@ -341,8 +356,7 @@ class PeerGUI(tk.Tk):
         
         
     def download(self, info_hash : str, name : str, pipe : int) -> None:
-        if self.peer.download_file(info_hash, name, pipe):
-            self.peer.announce(info_hash, name, 'completed')
+        self.peer.download_file(info_hash, name, pipe)
         
     
     def create_torrent_window(self) -> None:
