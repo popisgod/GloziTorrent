@@ -162,7 +162,8 @@ class PeerGUI(tk.Tk):
         """
 
         data = self.peer.scrape()
-
+        print(data)
+            
         # clear the current session list in the listbox
         listbox.selection_clear(0, tk.END)
         listbox.delete(0, tk.END)
@@ -217,22 +218,13 @@ class PeerGUI(tk.Tk):
         form_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
         help_text = '''
-        welcome to my chat client!
+        welcome to my torrent client!
         
-        You may choose between the avaliable sessions, or create a session for yourself.
-        If you choose to join a session, you need to know the code of it before joining.
-        Another option is to join a session without a code, sessions without a code are marked 'NO CODE'.
-        When entering a session you will be required to enter your username and code if needed. 
-        To enter a session double click on the session you would like to join
-        When creating a session you will be required to create a session name, code, and add your username. 
-        Leaving the password entry empty will create a session with no code.
-        EXIT code is meant for closing the server if you are provided with the server exit code. 
-        The code is only available to people who have access to the server.
-        users who are inactive will be disconnected after 4 min, ADMIN can not be disconnected.
+        infront of you is a list of the available torrent files.
+        you can try to download them all, some might be inactive so you won't be able to download them sadly.
+        you can also create a torrent file by selecting create torrent file and selecting a file with the file explorer. 
+        this file will be uploaded to the tracker server and now other people will be able to see it.
         
-        username - consistes of 3 to 12 characters, can't start with a digit
-        session name -  consistes of 3 to 12 characters, can't start with a digit
-        password - a 5 digit code, no alphabet characters 
         
         '''
         
