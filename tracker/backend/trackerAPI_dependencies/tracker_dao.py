@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from fastapi import Depends
 from pymongo import MongoClient
 from passlib.context import CryptContext
+
 if __name__ == '__main__':
     import config
 else:

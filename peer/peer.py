@@ -22,6 +22,8 @@ from utils.setup import setup_peer
 
 BUFSIZE = 3145728
 TORRENT_FILES_DIR = '.torrent'
+HOST_IP = ''
+TRACKER_IP = ''
 
 @dataclass
 class Address:
@@ -41,15 +43,13 @@ class FilePart:
     part_num : int | None = None
     
     
-
-
 class Peer: 
     def __init__(self) -> None:
         setup_peer()
         # tracker holding information about peers 
-        self.tracker = 'http://10.100.102.3:5000/'
+        self.tracker = f'http://{TRACKER_IP}:5000/'
         self.port = networking_utils.get_open_port()
-        self.ip = networking_utils.get_host_ip()
+        self.ip = HOST_IP
         self.peer_id = get_id()
         self.stopped = []
         self.peers = []
@@ -187,19 +187,24 @@ class Peer:
                 self.socket.connect((address.ip, address.port))
                 self.socket.setblocking(True)
                 
-                msg = Message('.torrent', info_hash)
+                msg = Message('$.torrent', info_hash)
                 self.socket.send(pickle.dumps(msg))
 
-                recv_msg : Message = pickle.loads(self.socket.recv(BUFSIZE))
+                data = b""
+                while True:
+                    packet = self.socket.recv(BUFSIZE)
+                    if not packet: break
+                    data += packet
+                recv_msg : Message = pickle.loads(data)
                 
-                if recv_msg.msg == '.torrent': 
+                if recv_msg.msg == '$.torrent': 
                     if recv_msg.data is not None:
                         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         return recv_msg.data
                 
 
 
-            except socket.error as e: 
+            except (socket.error, TimeoutError, Exception) as e: 
                 print(f"Error connecting to {address.ip}:{address.port}: {e}")
                 self.not_active.append(address)
         print('file wasn not found')
@@ -242,7 +247,7 @@ class Peer:
         total = len(parts_missing)
         
         while parts_missing: 
-            if pipe and len(parts_missing) != 0:
+            if pipe:
                 os.write(pipe, json.dumps({'msg' : 'update', 'number' : 100 - int((len(parts_missing) / total) * 100)}).encode())
             if all(element == [] for element in list(parts_per_peer.values())):
                 print('peers miss a part, file is not downloadable')
@@ -254,20 +259,26 @@ class Peer:
                 parts_hash = parts_per_peer.get((address.ip, address.port), None)
                 if parts_hash is not None:
                     try: 
-                        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        self.socket.connect((address.ip, address.port))
-                        self.socket.setblocking(True)
                         for part_hash in parts_hash: 
-                            if part_hash in parts_missing:
-                                msg = Message('part', FilePart(info_hash=info_hash, part_hash=part_hash))
-                                self.socket.send(pickle.dumps(msg))
-                                part : FilePart = pickle.loads(self.socket.recv(BUFSIZE))
-                                if part.data:
-                                    if hashlib.sha256(part.data).hexdigest() == part_hash:
-                                        with open(os.path.join(torrent_file['info_hash'], part_hash + '.bin'), 'wb') as file:
-                                            file.write(part.data)
-                                        parts_missing.remove(part_hash)    
-                                parts_hash.remove(part_hash)
+                            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock: 
+                                sock.connect((address.ip, address.port))
+                                if part_hash in parts_missing:
+                                    msg = Message('$part', FilePart(info_hash=info_hash, part_hash=part_hash))
+                                    sock.send(pickle.dumps(msg))
+                                    data = b""
+                                    while True:
+                                        packet = sock.recv(BUFSIZE)
+                                        if not packet: break
+                                        data += packet
+                                        
+                                    msg = pickle.loads(data).data 
+                                    if part.data:
+                                        if hashlib.sha256(part.data).hexdigest() == part_hash:
+                                            with open(os.path.join(torrent_file['info_hash'], part_hash + '.bin'), 'wb') as file:
+                                                file.write(part.data)
+                                    
+                                            parts_missing.remove(part_hash)    
+                                    parts_hash.remove(part_hash)
 
                     except socket.error as e: 
                         print(f"Error connecting to {address.ip}:{address.port}: {e}")    
@@ -288,16 +299,18 @@ class Peer:
         parts_per_peer = {}
         for address in peers:
             try:
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket.connect((address.ip, address.port))
-                self.socket.setblocking(True)
-
-                msg = Message('parts_available', info_hash)
-                self.socket.send(pickle.dumps(msg))
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.connect((address.ip, address.port))
+                    msg = Message('$parts_available', info_hash)
+                    sock.send(pickle.dumps(msg))
                 
-                data = pickle.loads(self.socket.recv(BUFSIZE))
+                    data = b""
+                    while True:
+                        packet = sock.recv(BUFSIZE)
+                        if not packet: break
+                        data += packet
+                    data = pickle.loads(data)
                 parts_per_peer[(address.ip, address.port)] = data
-
 
             except socket.error as e: 
                 print(f"Error connecting to {address.ip}:{address.port}: {e}")
@@ -340,7 +353,7 @@ class Peer:
 class PeerServer(socket.socket):
     def __init__(self, port : int, peer_id : str) -> None:
         super().__init__(socket.AF_INET, socket.SOCK_STREAM)
-        self.bind((networking_utils.get_host_ip(), port))
+        self.bind((HOST_IP, port))
         self.listen(5)
         self.setblocking
         self.peer_id = peer_id
@@ -352,7 +365,7 @@ class PeerServer(socket.socket):
         
         """
         while True: 
-            read_sockets, write_sockets, _ = select.select(
+            read_sockets, _, _ = select.select(
                 self.CONNECTION_LIST,
                 self.CONNECTION_LIST,
                 self.CONNECTION_LIST
@@ -373,17 +386,18 @@ class PeerServer(socket.socket):
                             msg : Message = pickle.loads(msg) # type: ignore
                             print(msg)
                             
-                            if msg.msg == ".torrent": 
+                            if msg.msg == "$.torrent": 
                                 msg.data = Peer.torrent_file_exists(msg.data)
                                 sock.send(pickle.dumps(msg))
                             
-                            if msg.msg == "parts_available":
+                            if msg.msg == "$parts_available":
                                 msg.data = Peer.file_parts_available(msg.data)
                                 sock.send(pickle.dumps(msg.data))
                             
-                            if msg.msg == "part": 
-                                data = Peer.file_part_exists(msg.data)
-                                sock.send(pickle.dumps(data))
+                            if msg.msg == "$part": 
+                                msg.data = Peer.file_part_exists(msg.data)
+                                sock.send(pickle.dumps(msg))
+                            self.disconnect(sock)
                     except socket.error as e:
                         self.disconnect(sock)    
                     except EOFError as e:
@@ -398,28 +412,13 @@ class PeerServer(socket.socket):
         sock.close()
 
 
-
 def get_id() -> str:
     with open('settings.json', 'r') as file:
         data = json.load(file)
     return data['UUID']
         
     
-        
-    
 if __name__=='__main__':
     
     # ------- tests -------
-    
-    
-    # creating a torrent file 
-    peer = Peer()
-    
-    peer.download_file('76949f99e70d7ff84b2104481c4afc44c7cb9145492ea8c7db68eab9086859ca')
-    
-    sleep(50)
-    
-    peer.download_file('76949f99e70d7ff84b2104481c4afc44c7cb9145492ea8c7db68eab9086859ca')
-    
-    while True:
-        pass
+    pass

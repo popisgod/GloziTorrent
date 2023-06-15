@@ -1,4 +1,6 @@
 # Standard library imports
+from ast import Not
+from email.errors import FirstHeaderLineIsContinuationDefect
 import json
 from typing import Dict, List, Any, Tuple
 from threading import Thread
@@ -11,15 +13,16 @@ from tkinter import filedialog
 import time 
 import os 
 
+
 # Third party imports 
 from PIL import Image, ImageTk, ImageOps
-
+import requests
 
 # Local application imports
 import peer
 
-
-
+FIRST = True
+REFRESH_INTERVAL = 5
 # Set Discord-inspired colors
 DISCORD_DARK_BLUE = "#2C2F33"
 DISCORD_GRAY = "#2f3136"
@@ -108,34 +111,8 @@ class PeerGUI(tk.Tk):
         create_torrent = ttk.Button(
             button_frame, text="Create torrent", command=self.create_torrent_window)
         create_torrent.pack(side=tk.LEFT, padx=5, anchor=tk.W)
+        self.create_torrent = create_torrent
 
-        # # Create a frame for the close server label, entry, and check mark
-        # close_server_frame = ttk.Frame(window)
-        # close_server_frame.pack(side=tk.BOTTOM, pady=10)
-
-        # # Create a label for the close server field 
-        # close_server_label = ttk.Label(close_server_frame, text="EXIT code: ")
-        # close_server_label.pack(side=tk.LEFT, anchor=tk.S,pady=10, padx=5)
-
-        # # Create an Entry for the close server field
-        # close_server_entry = ttk.Entry(close_server_frame, foreground='black',width=18,  validate='key', validatecommand=(root.register(lambda text, action: validate_text(5, text, action)), '%P', '%d'))
-        # close_server_entry.pack(side=tk.LEFT, anchor=tk.S, padx=5,pady=10)
-        # close_server_entry.configure(foreground='red')
-        # close_server_entry.bind('<KeyRelease>', lambda e: on_keyrelease(e, r'^[0-9]{5,5}$'))
-
-        # # Load the image and convert it to a format that Tkinter can use
-        # image_file = "check_mark.png"
-        # image = Image.open(image_file)
-        # image = image.resize((15, 15))
-        # check_mark_photo = ImageTk.PhotoImage(image)
-
-        # # Create a check mark button to close the server
-        # check_mark = ttk.Button(
-        #     close_server_frame, text='s',image=check_mark_photo,compound='none',width=3, command=lambda: close_server(client, close_server_entry))
-        # check_mark.image = check_mark_photo
-        # check_mark.pack(side=tk.RIGHT, anchor=tk.CENTER, padx=5)
-
-        # # Load the image and convert it to a format that Tkinter can use
         
         image_file = "question_mark.png"
         image = Image.open(image_file)
@@ -148,6 +125,30 @@ class PeerGUI(tk.Tk):
         help_button.image = question_mark_photo
         help_button.pack(side=tk.LEFT, anchor=tk.W, padx=5)
 
+        self.server_status = ttk.Label(
+            button_frame, text="server is UP", foreground='green')
+        self.server_status.pack(side=tk.LEFT, padx=5, anchor=tk.W)
+
+
+        thread = Thread(target=self.wrapper)
+        thread.daemon = True
+        thread.start()
+
+    def update_lists(self):
+        try: 
+            self.reload_sessions(self.listbox)
+            self.create_torrent.config(state='normal')
+            self.server_status.config(text='server is UP',foreground='green')
+        except (requests.exceptions.ConnectionError, TimeoutError) as e:
+            print('server is downs')
+            self.server_status.config(text='server is DOWN',foreground='red')
+            self.create_torrent.config(state='disabled')
+            time.sleep(REFRESH_INTERVAL)
+            
+    def wrapper(self):
+        while True: 
+            self.update_lists()
+            time.sleep(REFRESH_INTERVAL)
 
     def reload_sessions(self, listbox) -> None:
         """
@@ -161,14 +162,15 @@ class PeerGUI(tk.Tk):
             None.
         """
 
-
         data = self.peer.scrape()        
 
-
+        if len(data) == listbox.size():
+            return
 
         listbox.selection_clear(0, tk.END)
         listbox.delete(0, tk.END)
         list_file_names = []
+
         for torrent_file in os.listdir('.torrent'):
             with open(os.path.join('.torrent',torrent_file), 'r') as file:
                 torrent_data = json.load(file)
@@ -181,7 +183,8 @@ class PeerGUI(tk.Tk):
                     else: 
                        listbox.insert(tk.END, f"{torrent_data['info']['name']} -| {torrent_data['info_hash']}") 
                     listbox.selection_set(tk.END, None)
-        
+        if len(data) == 0:
+            raise TimeoutError
 
         # iterate over the sessions list received from the server and add them to the listbox
         for i, file in enumerate(data):
